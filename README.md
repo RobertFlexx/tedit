@@ -34,7 +34,7 @@
 
 ```bash
 make
-doas make install
+doas (or sudo) make install
 ```
 
 ### Running
