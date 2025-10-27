@@ -1,6 +1,6 @@
 # tedit — A Minimal Yet Mighty Command-Line Text Editor
 
-`tedit` is a lightweight, command-line text editor designed to bring the power of traditional editors like *ed* and *ex* — but with modern touches, safety features, syntax highlighting, and theming, all in one fast and portable binary.
+`tedit` is a lightweight, command-line text editor designed to bring the power of traditional editors like *ed* and *ex* — but with modern touches, safety features, syntax highlighting, and theming, all in one fast and portable binary. (also check out https://github.com/Kokonico/medit !)
 
 ---
 
