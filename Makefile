@@ -25,9 +25,12 @@ run: $(TARGET)
 install: $(TARGET)
 	install -d $(DESTDIR)$(PREFIX)/bin
 	install -m 0755 $(TARGET) $(DESTDIR)$(PREFIX)/bin/$(TARGET)
+	install -d $(DESTDIR)$(PREFIX)/share/man/man1
+	install -m 0644 tedit.1 $(DESTDIR)$(PREFIX)/share/man/man1/tedit.1
 
 uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/$(TARGET)
+	rm -f $(DESTDIR)$(PREFIX)/share/man/man1/tedit.1
 
 format:
 	@command -v clang-format >/dev/null 2>&1 && clang-format -i $(SRC) || echo "clang-format not found; skipping"

@@ -31,7 +31,7 @@
 namespace fs = std::filesystem;
 using std::string; using std::vector; using std::cout; using std::cerr; using std::endl;
 
-/* Forward declaration for filter helper (used later in Editor::handle) */
+/* Forward declaration for filter helper */
 static bool run_filter_replace(vector<string>& lines, size_t lo, size_t hi, const string& shcmd);
 
 /* ============================ ANSI / Themes ============================ */
@@ -162,7 +162,9 @@ static inline string lower(string s){ for(char& c: s) c=(char)std::tolower((unsi
 static inline bool parse_long(const string& s, long& out){
     if(s.empty()) return false;
     char *e=nullptr; long v=strtol(s.c_str(), &e, 10);
-    if(e==s.c_str()||*e) return false; out=v; return true;
+    if(e==s.c_str()||*e) { return false; }
+    out = v;
+    return true;
 }
 static inline string home_path(){ const char* h=getenv("HOME"); return h? string(h): string("."); }
 static inline bool file_exists(const string& p){ struct stat st{}; return ::stat(p.c_str(),&st)==0; }
@@ -564,10 +566,10 @@ static string colorize_lang(const string& L, const Buffer& b, const ThemePalette
 
 /* ============================ Terminal width & wrapping ============================ */
 static int term_width(){
-    #if defined(__unix__) || defined(__APPLE__)
+#if defined(__unix__) || defined(__APPLE__)
     struct winsize ws{};
     if(ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws)==0 && ws.ws_col>0) return ws.ws_col;
-    #endif
+#endif
     return 80;
 }
 
@@ -617,13 +619,8 @@ struct LineReader{
         bool start(){
             if(!isatty(STDIN_FILENO)) return false;
             if(tcgetattr(STDIN_FILENO,&orig)==-1) return false;
-            struct termios t=orig;
-            t.c_lflag &= ~(ECHO|ICANON);
-            t.c_cc[VMIN]=1; t.c_cc[VTIME]=0;
-            if(tcsetattr(STDIN_FILENO,TCSAFLUSH,&t)==-1) return false;
-            ok=true; return true;
+            return false;
         }
-        ~Raw(){ if(ok) tcsetattr(STDIN_FILENO,TCSAFLUSH,&orig); }
     };
     #endif
     vector<string> history; size_t HIST_MAX=800;
@@ -637,7 +634,13 @@ struct LineReader{
         color_reset = C_RESET;
     }
 
-    static vector<string> split_words(const string& s){ vector<string> v; std::istringstream in(s); string w; while(in>>w) v.push_back(w); return v; }
+    static vector<string> split_words(const string& s){
+        vector<string> v;
+        std::istringstream in(s);
+        string w;
+        while(in>>w) v.push_back(w);
+        return v;
+    }
 
     static vector<string> complete_fs(const string& token){
         vector<string> out; string base=token, dir="";
@@ -655,20 +658,57 @@ struct LineReader{
         std::sort(out.begin(), out.end()); return out;
     }
 
+    static string expand_home_in_token(string in){
+        if(in.empty()) return in;
+        if(in=="~") return home_path();
+        if(in.size()>=2 && in[0]=='~' && in[1]=='/'){
+            return home_path()+in.substr(1);
+        }
+        return in;
+    }
+
+    static vector<string> complete_dirs_only(const string& token){
+        string t = expand_home_in_token(token);
+        vector<string> out; string base=t, dir=".";
+        auto pos = t.find_last_of('/');
+        if(pos!=string::npos){ dir = t.substr(0,pos); base = t.substr(pos+1); }
+        std::error_code ec;
+        for(auto& e: fs::directory_iterator(dir, fs::directory_options::skip_permission_denied, ec)){
+            string name = e.path().filename().string();
+            if(name.rfind(base,0)==0 && e.is_directory()){
+                string cand = (dir=="."? name: dir+"/"+name);
+                out.push_back(cand + "/");
+            }
+        }
+        std::sort(out.begin(), out.end());
+        return out;
+    }
+
     vector<string> complete(const string& buf){
         auto toks = split_words(buf); vector<string> out;
         bool at_start = toks.empty();
         bool fresh = (!buf.empty() && std::isspace((unsigned char)buf.back()));
+
         if(at_start){ out = commands; return out; }
+
         if(toks.size()==1 && !fresh){
             string pref=toks[0];
-            for(auto& c: commands) if(c.rfind(pref,0)==0) out.push_back(c);
-            auto filec = complete_fs(pref); out.insert(out.end(), filec.begin(), filec.end());
+            for(const auto& c: commands) if(c.rfind(pref,0)==0) out.push_back(c);
             return out;
         }
-        string last = toks.back();
-        auto filec = complete_fs(last); out.insert(out.end(), filec.begin(), filec.end());
-        return out;
+
+        string first = toks[0];
+
+        if(first=="cd"){
+            if(toks.size()==1 && fresh){
+                return complete_dirs_only("");
+            }
+            string last = fresh ? string("") : toks.back();
+            return complete_dirs_only(last);
+        }
+
+        string last = fresh ? string("") : toks.back();
+        return complete_fs(last);
     }
 
     string read(const string& prompt){
@@ -682,65 +722,79 @@ struct LineReader{
         }
         #if defined(__unix__) || defined(__APPLE__)
         cout<<prompt<<std::flush;
-        Raw r; if(!r.start()){ string s; if(!std::getline(std::cin,s)) return string(); return s; }
+        Raw r;
+        {
+            struct termios orig{};
+            if(isatty(STDIN_FILENO) && tcgetattr(STDIN_FILENO,&orig)!=-1){
+                struct termios t=orig;
+                t.c_lflag &= ~(ECHO|ICANON);
+                t.c_cc[VMIN]=1; t.c_cc[VTIME]=0;
+                tcsetattr(STDIN_FILENO,TCSAFLUSH,&t);
+                struct termios restore = orig;
 
-        string buf; size_t cursor=0; int hist_idx=(int)history.size();
+                auto restore_term = [&restore](){ tcsetattr(STDIN_FILENO,TCSAFLUSH,&restore); };
+                struct Guard{ std::function<void()> f; ~Guard(){ if(f) f(); } } guard{restore_term};
 
-        auto refresh=[&](){
-            cout<<"\r\033[2K"<<prompt<<color_input<<buf<<color_reset;
-            size_t tail = buf.size() - cursor;
-            if(tail>0) cout<<"\033["<<tail<<"D";
-            cout.flush();
-        };
+                string buf; size_t cursor=0; int hist_idx=(int)history.size();
+                auto refresh=[&](){
+                    cout<<"\r\033[2K"<<prompt<<color_input<<buf<<color_reset;
+                    size_t tail = buf.size() - cursor;
+                    if(tail>0) cout<<"\033["<<tail<<"D";
+                    cout.flush();
+                };
 
-        refresh();
-        while(true){
-            char c=0; ssize_t n=::read(STDIN_FILENO,&c,1);
-            if(n<=0) return string();
-            if(c=='\r'||c=='\n'){ cout<<"\r\n"; break; }
-            else if((unsigned char)c==127||c=='\b'){
-                if(cursor>0){ buf.erase(buf.begin()+cursor-1); cursor--; refresh(); }
-            }
-            else if(c=='\t'){
-                auto opts=complete(buf);
-                if(opts.empty()){
-                } else if(opts.size()==1){
-                    auto toks=split_words(buf);
-                    size_t lastsp=buf.find_last_of(' ');
-                    string prefix=(lastsp==string::npos? string(): buf.substr(0,lastsp+1));
-                    buf = prefix + opts[0];
-                    cursor=buf.size(); refresh();
-                } else {
-                    cout<<"\r\n";
-                    size_t shown=0;
-                    for(auto& o:opts){ cout<<o<<"  "; if(++shown%6==0) cout<<"\r\n"; }
-                    if((shown%6)!=0) cout<<"\r\n";
-                    refresh();
+                refresh();
+                while(true){
+                    char c=0; ssize_t n=::read(STDIN_FILENO,&c,1);
+                    if(n<=0) return string();
+                    if(c=='\r'||c=='\n'){ cout<<"\r\n"; break; }
+                    else if((unsigned char)c==127||c=='\b'){
+                        if(cursor>0){ buf.erase(buf.begin()+cursor-1); cursor--; refresh(); }
+                    }
+                    else if(c=='\t'){
+                        auto opts=complete(buf);
+                        if(opts.empty()){
+                        } else if(opts.size()==1){
+                            auto toks=split_words(buf);
+                            size_t lastsp=buf.find_last_of(' ');
+                            string prefix=(lastsp==string::npos? string(): buf.substr(0,lastsp+1));
+                            buf = prefix + opts[0];
+                            cursor=buf.size(); refresh();
+                        } else {
+                            cout<<"\r\n";
+                            size_t shown=0;
+                            for(auto& o:opts){ cout<<o<<"  "; if(++shown%6==0) cout<<"\r\n"; }
+                            if((shown%6)!=0) cout<<"\r\n";
+                            refresh();
+                        }
+                    }
+                    else if(c==27){
+                        char seq[2];
+                        if(::read(STDIN_FILENO,seq,1)<=0) continue;
+                        if(seq[0]=='['){
+                            char k;
+                            if(::read(STDIN_FILENO,&k,1)<=0) continue;
+                            if(k=='A'){
+                                if(hist_idx>0){ hist_idx--; buf=history[hist_idx]; cursor=buf.size(); refresh(); }
+                            } else if(k=='B'){
+                                if(hist_idx<(int)history.size()-1){ hist_idx++; buf=history[hist_idx]; cursor=buf.size(); refresh(); }
+                                else { hist_idx=(int)history.size(); buf.clear(); cursor=0; refresh(); }
+                            } else if(k=='C'){ if(cursor<buf.size()){ cursor++; refresh(); } }
+                            else if(k=='D'){ if(cursor>0){ cursor--; refresh(); } }
+                        }
+                    }
+                    else if(c==1){ cursor=0; refresh(); }
+                    else if(c==5){ cursor=buf.size(); refresh(); }
+                    else{
+                        buf.insert(buf.begin()+cursor,c);
+                        cursor++; refresh();
+                    }
                 }
-            }
-            else if(c==27){
-                char seq[2];
-                if(::read(STDIN_FILENO,seq,1)<=0) continue;
-                if(seq[0]=='['){
-                    char k;
-                    if(::read(STDIN_FILENO,&k,1)<=0) continue;
-                    if(k=='A'){
-                        if(hist_idx>0){ hist_idx--; buf=history[hist_idx]; cursor=buf.size(); refresh(); }
-                    } else if(k=='B'){
-                        if(hist_idx<(int)history.size()-1){ hist_idx++; buf=history[hist_idx]; cursor=buf.size(); refresh(); }
-                        else { hist_idx=(int)history.size(); buf.clear(); cursor=0; refresh(); }
-                    } else if(k=='C'){ if(cursor<buf.size()){ cursor++; refresh(); } }
-                    else if(k=='D'){ if(cursor>0){ cursor--; refresh(); } }
-                }
-            }
-            else if(c==1){ cursor=0; refresh(); }
-            else if(c==5){ cursor=buf.size(); refresh(); }
-            else{
-                buf.insert(buf.begin()+cursor,c);
-                cursor++; refresh();
+                return buf;
+            } else {
+                string s; cout<<prompt; if(!std::getline(std::cin,s)) return string(); return s;
             }
         }
-        return buf;
         #else
         string s; cout<<prompt; if(!std::getline(std::cin,s)) return string(); return s;
         #endif
@@ -774,9 +828,14 @@ struct Editor{
     Lang lang = Lang::Plain;
 
     Editor(){
-        lr.commands = {"help","open","info","write","w","wq","saveas","quit","q","print","p","r","append","a","insert","i","delete","d","move","m","join","find","findi","findre","repl","replg","read","write","undo","u","redo","set","filter","ls","pwd","number",
-            "goto","n","N","new","bnext","bprev","lsb","theme","highlight","alias","diff"};
-            lr.set_theme_colors(P);
+        lr.commands = {
+            "help","open","info","write","w","wq","saveas","quit","q","print","p","r",
+            "append","a","insert","i","delete","d","move","m","join","find","findi","findre",
+            "repl","replg","read","undo","u","redo","set","filter","ls","pwd","number",
+            "goto","n","N","new","bnext","bprev","lsb","theme","highlight","alias","diff",
+            "cd","clear"
+        };
+        lr.set_theme_colors(P);
     }
 
     string cfg_path() const { return home_path() + "/.teditrc"; }
@@ -858,7 +917,7 @@ struct Editor{
             "Tip: 'theme neon' and 'highlight on' for vibes.",
             "Tip: 'alias dd \"delete 1-$\"' to delete all quickly.",
             "Tip: 'diff' shows changes vs on-disk.",
-            "Tip: ':set wrap on' soft-wraps long lines under the gutter."
+            "Tip: 'Tab': first word = commands only; after 'cd ' => directories only."
         };
         std::mt19937_64 rng((unsigned)time(nullptr));
         cout<<P.dim<<tips[rng()% (sizeof(tips)/sizeof(*tips))]<<C_RESET<<"\n";
@@ -909,7 +968,7 @@ struct Editor{
         CMD("q|quit",                 "", "quit (prompts if unsaved)");
         CMD("p|print [range]",        "", "print lines");
         CMD("r <n>",                  "", "show one line");
-        CMD("a|append",               "", "append lines ('.' ends; use \"\\.\" for literal)");
+        CMD("a|append",               "", "append lines ('.' ends; use \".\" for a literal)");
         CMD("i|insert <n>",           "", "insert before line n");
         CMD("d|delete [range]",       "", "delete lines");
         CMD("m|move <from> <to>",     "", "move line");
@@ -926,8 +985,8 @@ struct Editor{
         CMD("set number on|off",      "", "toggle line numbers");
         CMD("set backup on|off",      "", "toggle on-save ~ backup");
         CMD("set autosave <sec>",     "", "autosave interval");
-        CMD("set wrap on|off",        "", "soft-wrap long lines");
-        CMD("set truncate on|off",    "", "truncate long lines when wrap=off");
+        CMD("set wrap on|off",        "", "soft-wrap long lines under the gutter");
+        CMD("set truncate on|off",    "", "truncate line display when wrap=off");
         CMD("set lang <name>",        "", "override syntax (auto by extension)");
         CMD("highlight on|off",       "", "simple syntax highlighting");
         CMD("theme <name>",           "", "default|dark|neon|matrix|paper");
@@ -936,6 +995,9 @@ struct Editor{
         CMD("bnext | bprev | lsb",    "", "cycle/list buffers");
         CMD("diff",                   "", "show diff vs on-disk");
         CMD("ls [-l] [-a] [path] | pwd","", "filesystem helpers");
+        CMD("cd <dir>",               "", "change directory (requires a path; use ~, ., ..)");
+        CMD("clear",                  "", "clear screen and scrollback");
+        cout<<P.dim<<"Tab: first word => commands only; after 'cd ' => directories only."<<C_RESET<<"\n";
     }
 
     void load(const string& p){
@@ -1139,6 +1201,17 @@ struct Editor{
         std::ostringstream cmd; cmd<<"sh -c 'diff -u -- \""<<buf.path<<"\" \""<<tpat<<"\" || true'";
         system(cmd.str().c_str());
         unlink(tpat);
+    }
+
+    void clear_screen(){
+        cout<<"\033[3J\033[H\033[2J"<<std::flush;
+    }
+
+    static string expand_path(const string& in){
+        if(in.empty()) return in;
+        if(in=="~") return home_path();
+        if(in.size()>=2 && in[0]=='~' && in[1]=='/') return home_path()+in.substr(1);
+        return in;
     }
 
     bool handle(const string& raw){
@@ -1394,6 +1467,30 @@ struct Editor{
             ls_list(target, all, longfmt);
             return true;
         }
+
+        if(lc=="cd"){
+            if(rest.empty()){
+                cout<<P.warn<<"cd: requires a directory path (try ., .., ~, or a folder name)"<<C_RESET<<"\n";
+                return true;
+            }
+            string target = expand_path(rest);
+            std::error_code ec;
+            fs::file_status st = fs::status(target, ec);
+            if(ec || !fs::exists(st)){
+                cout<<P.err<<"cd: no such directory: "<<target<<C_RESET<<"\n";
+                return true;
+            }
+            if(!fs::is_directory(st)){
+                cout<<P.err<<"cd: not a directory: "<<target<<C_RESET<<"\n";
+                return true;
+            }
+            fs::current_path(target, ec);
+            if(ec) cout<<P.err<<"cd: "<<ec.message()<<C_RESET<<"\n";
+            else cout<<P.ok<<"cd: "<<fs::current_path().string()<<C_RESET<<"\n";
+            return true;
+        }
+
+        if(lc=="clear"){ clear_screen(); return true; }
 
         cout<<P.warn<<"unknown command — type 'help'"<<C_RESET<<"\n"; return true;
     }

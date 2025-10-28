@@ -1,0 +1,134 @@
+.TH TEDIT 1 "October 2025" "tedit 1.0" "User Commands"
+.SH NAME
+tedit \- a minimal yet mighty command-line text editor
+.SH SYNOPSIS
+.B tedit
+.RI [ file ]
+.br
+.B tedit
+.RI [ options ]
+.SH DESCRIPTION
+.B tedit
+is a lightweight, command-line text editor inspired by
+.BR ed (1)
+and
+.BR ex (1),
+but enhanced with modern features such as syntax highlighting, undo/redo history,
+atomic saves, backups, autosave snapshots, themes, and hooks.
+
+It provides a clean, scriptable command interface with familiar operations
+for editing, searching, replacing, and filtering text ranges, all in a single
+fast, portable C++17 binary.
+
+.SH FEATURES
+.IP \[bu] 2
+Atomic file saves and optional backups for safety.
+.IP \[bu]
+Undo/redo stack with up to 200 operations.
+.IP \[bu]
+Syntax highlighting with auto-detection (C/C++, Python, Shell, Ruby, JSON, etc.).
+.IP \[bu]
+Configurable themes and color schemes.
+.IP \[bu]
+Directory navigation and file listing via \fB:cd\fR, \fB:ls\fR, and \fB:pwd\fR.
+.IP \[bu]
+Shell filters for piping text through external commands.
+.IP \[bu]
+Multiple buffers and diff viewing.
+.IP \[bu]
+Hooks for \fIon_save\fR and \fIon_quit\fR events.
+.IP \[bu]
+Optional privileged saves via \fBdoas\fR.
+
+.SH USAGE
+Run
+.B tedit
+with a filename to open a file:
+.PP
+.RS
+.EX
+tedit notes.txt
+.EE
+.RE
+.PP
+Start without arguments to open an empty session:
+.PP
+.RS
+.EX
+tedit
+.EE
+.RE
+.PP
+Common editor commands:
+.PP
+.RS
+.EX
+:help              # list commands
+:set number on     # show line numbers
+:find text         # search
+:repl old new      # replace
+:wq                # save and quit
+.EE
+.RE
+
+.SH FILES
+.IP "~/.teditrc"
+Configuration file for preferences (theme, line numbers, autosave, etc.).
+.IP "~/.tedit/hooks/on_save"
+User-defined script executed after each save.
+.IP "~/.tedit/hooks/on_quit"
+User-defined script executed on exit.
+.IP "~/.tedit_banner"
+Optional banner file printed on startup.
+.IP "~/.tedit-recover-*"
+Autosave recovery snapshots.
+
+.SH TOOLS
+The repository includes several helper scripts:
+.TP
+.B install.sh
+Detects dependencies, builds, and installs \fBtedit\fR automatically with progress display.
+.TP
+.B uninstall.sh
+Removes \fBtedit\fR and related PATH entries from your system.
+.TP
+.B update.sh
+Checks for git updates; if none, prints “Tedit is up to date.” Otherwise pulls, rebuilds, and reinstalls.
+
+.SH CONFIGURATION
+Configuration options are set in \fI~/.teditrc\fR:
+.PP
+.EX
+theme=neon
+highlight=on
+number=on
+backup=on
+autosave=120
+wrap=on
+truncate=off
+.EE
+
+.SH PRIVILEGED SAVES
+If saving fails due to permissions, \fBtedit\fR writes to a temporary file
+and uses \fBdoas mv\fR to move it into place. Configure \fBdoas.conf\fR
+to allow this behavior, or run \fBtedit\fR as root for system files.
+
+.SH EXIT STATUS
+.TP
+.B 0
+Successful completion.
+.TP
+.B 1
+An error occurred (file not found, permission denied, etc.).
+
+.SH AUTHOR
+Written by Robert (aka RobertFlexx).
+
+.SH HOMEPAGE
+Project page and source code:
+.UR https://github.com/RobertFlexx/tedit
+.UE
+
+.SH LICENSE
+BSD 3-Clause License. You are free to use, modify, and redistribute
+provided the copyright notice is retained.
