@@ -30,7 +30,7 @@
 
 ## Getting Started
 
-### Installation
+### Installation (make is required to be on your system)
 
 ```bash
 make
