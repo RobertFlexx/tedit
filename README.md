@@ -79,7 +79,7 @@ Short answer: **safety, atomicity, and predictability.** Longer answer:
 
 ---
 
-## Getting Started (Beginner-Friendly)
+## Getting Started (Beginner-Friendly Source Build Guide)
 
 ### Install
 
