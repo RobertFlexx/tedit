@@ -36,18 +36,18 @@
 
 ---
 
-## Clone & Use the Tools (with sudo)
+## Clone & Use the Tools (with sudo, git clone project first)
 
 ```bash
 git clone https://github.com/RobertFlexx/tedit
 cd tedit
-sh init.sh            # one-time: installs PATH wrappers (tedit-install/update/uninstall)
+sudo sh init.sh            # one-time: installs PATH wrappers (tedit-install/update/uninstall)
 sudo tedit-install    # build + install to /usr/local/bin
 sudo tedit-update     # fetch latest updates, rebuild, reinstall
 sudo tedit-uninstall  # remove binary + man page + PATH entry
 ```
 
-### What `init.sh` does (one-time)
+### What `init.sh` does (one-time, must run in git directory)
 
 * Creates small wrapper commands in your **PATH** so you can run the project tools **from anywhere**:
 
