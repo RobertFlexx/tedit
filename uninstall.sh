@@ -1,6 +1,7 @@
 #!/usr/bin/env sh
 # tedit uninstaller (POSIX sh)
-# Safely removes the tedit binary, manpage, and PATH entries added by the installer.
+# Safely removes the tedit binary, manpage, PATH entries added by the installer,
+# wrapper helpers from init.sh, and local build artifacts in this repo (./tedit, *.o).
 
 set -eu
 
@@ -30,7 +31,7 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 # --- Progress bar ---
-TOTAL=4 STEP=0 WIDTH=36
+TOTAL=6 STEP=0 WIDTH=36
 progress() {
   STEP=$((STEP + 1))
   [ "$STEP" -gt "$TOTAL" ] && STEP="$TOTAL"
@@ -60,7 +61,8 @@ say "${CYAN}${BOLD}Uninstalling ${APP_NAME}...${RESET}"
 
 FOUND=0
 
-progress "Removing binaries..."
+# 1) Remove installed binaries from PATH and common dirs
+progress "Removing installed binary..."
 for d in $(printf "%s\n" "$PATH" | tr ':' '\n') /usr/local/bin /usr/bin "$HOME/.local/bin"; do
   [ -n "$d" ] || continue
   f="$d/$APP_NAME"
@@ -69,8 +71,21 @@ for d in $(printf "%s\n" "$PATH" | tr ':' '\n') /usr/local/bin /usr/bin "$HOME/.
     FOUND=1
   fi
 done
-sleep 0.1
 
+# 2) Remove wrapper helpers created by init.sh
+progress "Removing wrapper helpers..."
+for name in tedit-install tedit-update tedit-uninstall; do
+  for d in $(printf "%s\n" "$PATH" | tr ':' '\n') /usr/local/bin /usr/bin "$HOME/.local/bin"; do
+    [ -n "$d" ] || continue
+    f="$d/$name"
+    if [ -x "$f" ] && [ ! -d "$f" ]; then
+      remove_file "$f"
+      FOUND=1
+    fi
+  done
+done
+
+# 3) Remove installed man pages
 progress "Removing man pages..."
 for mp in \
   "/usr/local/share/man/man1/${APP_NAME}.1" \
@@ -79,8 +94,8 @@ for mp in \
   [ -f "$mp" ] && remove_file "$mp" && FOUND=1
   [ -f "${mp}.gz" ] && remove_file "${mp}.gz" && FOUND=1
 done
-sleep 0.1
 
+# 4) Clean PATH entries our installer may have added
 progress "Cleaning PATH entries..."
 clean_profile() {
   prof="$1"
@@ -95,13 +110,25 @@ clean_profile() {
 for prof in "$HOME/.zprofile" "$HOME/.bash_profile" "$HOME/.profile"; do
   clean_profile "$prof"
 done
-sleep 0.1
 
+# 5) Remove local build artifacts inside this repo (non-installed files)
+progress "Removing local build artifacts..."
+# Prefer Makefile clean if present
+if [ -f Makefile ]; then
+  make clean >/dev/null 2>&1 || true
+fi
+# Fallback: remove common artifacts
+[ -f "./${APP_NAME}" ] && { rm -f "./${APP_NAME}" && say "🗑️  Removed: ./${APP_NAME}"; FOUND=1; }
+# Optional: generic object/debug leftovers (safe no-ops if none exist)
+rm -f ./*.o ./*.obj ./*.dSYM 2>/dev/null || true
+
+# 6) Refresh man database if available
 progress "Refreshing man database..."
 if have mandb; then
   ${SUDO:+$SUDO }mandb -q 2>/dev/null || true
 fi
 
+# Done
 printf "\n"
 if [ "$FOUND" -eq 0 ]; then
   say "No ${APP_NAME} installation detected."
