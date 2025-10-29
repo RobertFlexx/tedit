@@ -1,6 +1,6 @@
 # tedit — A Minimal Yet Mighty Command-Line Text Editor (this is not a shell! it has shell-like behavior.)
 
-`tedit` is a lightweight, command-line text editor inspired by *ed*/*ex*—with modern safety, syntax highlighting, themes, and quality-of-life extras in one fast, portable binary. Check out [this](https://github.com/Kokonico/medit)! :D
+`tedit` is a mac-os safe, lightweight, command-line text editor inspired by *ed*/*ex*—with modern safety, syntax highlighting, themes, and quality-of-life extras in one fast, portable binary. Check out [this](https://github.com/Kokonico/medit)! :D
 
 ---
 
