@@ -268,3 +268,200 @@ tedit> wq
 ## License
 
 BSD-3-Clause. Have fun, keep the notice, and ship great things. :P
+
+---
+
+## Tooling UX (Installer/Updater/Uninstaller)
+
+### What changed (TL;DR)
+
+* **Cinematic UI:** one clean progress bar + subtle spinner for long steps (TTY-aware).
+* **Smarter deps:** detects your package manager and installs only what’s missing.
+* **Gentoo note:** clearly shown in **yellow** when emerging toolchains (may be interactive).
+* **Quiet git:** updater keeps git chatter in a log; your terminal stays neat.
+* **“Up to date.”** Updater checks the remote; if nothing to pull, it prints exactly that.
+* **Repo auto-discovery:** wrappers/update can find your clone even when run from anywhere.
+
+---
+
+### Using the Wrappers (recommended)
+
+After you run `init.sh` once (in the repo), you can do everything from anywhere:
+
+```bash
+# Build + install (system-wide)
+sudo tedit-install        # or: doas tedit-install
+
+# Update (pull, rebuild, reinstall)
+sudo tedit-update         # prints "Up to date." if there’s nothing new
+
+# Uninstall (clean removal)
+sudo tedit-uninstall
+```
+
+> No sudo/doas? The tools auto-fallback to **user installs** under `~/.local` when possible.
+
+---
+
+### Install (cinematic)
+
+```bash
+# From inside the clone:
+sudo sh install.sh         # uses a cinematic bar + spinner
+# or with wrappers after init.sh:
+sudo tedit-install
+```
+
+What it does:
+
+1. Detects your **package manager** (apt, dnf/yum, pacman, zypper, apk, xbps-install, eopkg, emerge, brew).
+2. Installs **missing deps only** (`make`, a C++17 compiler, etc.).
+3. Builds and installs to `/usr/local/bin` (or `~/.local/bin` without sudo/doas).
+4. Installs the **man page** (if present) and refreshes the man DB (best-effort).
+5. Adds the install bin dir to your **PATH** if needed.
+
+**Gentoo:** you’ll see `Gentoo detected — emerging toolchain (may be interactive).` in yellow.
+
+---
+
+### Update (smart + quiet)
+
+```bash
+# From anywhere (after init.sh):
+sudo tedit-update
+# Or directly in the repo:
+sudo sh update.sh
+```
+
+What it does:
+
+* **Scans dependencies** first and installs what’s missing.
+* Warms up sudo/doas once to avoid surprise prompts mid-spinner.
+* **Quietly fetches** remote changes, compares your HEAD to upstream, and:
+
+  * Prints **`Up to date.`** if there’s nothing to pull.
+  * Otherwise, pulls/rebases, **auto-stashes** dirty trees and restores them after.
+* Rebuilds and reinstalls with the same cinematic UI.
+* Strips the binary (if `strip` exists).
+
+> Tip: if your wrappers ever lose track of the repo path, set it once:
+
+```bash
+sudo mkdir -p /usr/local/share/tedit
+printf '%s\n' "/absolute/path/to/your/tedit" | sudo tee /usr/local/share/tedit/repo >/dev/null
+```
+
+Or export per-call:
+
+```bash
+TEDIT_REPO="/absolute/path/to/tedit" sudo tedit-update
+```
+
+---
+
+### Uninstall (now with purge options)
+
+```bash
+# Simple:
+sudo tedit-uninstall
+
+# Advanced (from repo or wrapper):
+sudo sh uninstall.sh --purge-user-data             # remove ~/.tedit* (rc, banner, hooks, recover)
+sudo sh uninstall.sh --purge-repo -y               # also remove THIS git repo directory (no prompt)
+sudo sh uninstall.sh --purge --yes                 # both of the above, non-interactive
+```
+
+The uninstaller:
+
+* Removes the binary from common bin dirs and anywhere on `PATH`.
+* Removes wrappers (`tedit-install/update/uninstall`).
+* Cleans manpages, PATH lines added by the installer, and local build droppings.
+* Refreshes the man database (best-effort).
+* Supports **purge flags** (see above).
+
+---
+
+### Verbose mode & Logs
+
+* Set `VERBOSE=1` to stream command output instead of the spinner:
+
+  ```bash
+  VERBOSE=1 sudo sh install.sh
+  VERBOSE=1 sudo sh update.sh
+  ```
+* All runs write detailed logs:
+
+  * Install: `/tmp/tedit-install.<XXXXXX>.log`
+  * Update:  `/tmp/tedit-update.<XXXXXX>.log`
+  * Uninstall: `/tmp/tedit-uninstall.<XXXXXX>.log`
+
+If something acts cursed, share the **last ~60 lines** of the relevant log.
+
+---
+
+### Supported Package Managers (auto-detected)
+
+* **Debian/Ubuntu** (`apt`)
+* **Fedora/RHEL/CentOS/Rocky/Alma** (`dnf`/`yum`)
+* **Arch/Manjaro/Endeavour/Artix** (`pacman`)
+* **openSUSE/SLES** (`zypper`)
+* **Alpine/Chimera** (`apk`)
+* **Void** (`xbps-install`)
+* **Solus** (`eopkg`)
+* **Gentoo** (`emerge`) — **yellow note**; may be interactive
+* **macOS** (`brew`) — may require **Xcode Command Line Tools**
+
+---
+
+### Do I need root?
+
+* **System-wide** install/update/uninstall: use `sudo` **or** `doas`.
+* **Per-user** install when you don’t have privileges: the scripts automatically target `~/.local/bin` and ensure it’s on your `PATH`.
+
+---
+
+### Wrapper Internals (FYI)
+
+* `init.sh` records the repo path so wrappers can **cd into the clone** before running tools.
+* `update.sh` can also discover the repo via:
+
+  * `TEDIT_REPO=/path/to/tedit`
+  * Marker file: `/usr/local/share/tedit/repo`
+  * Common fallback: `$HOME/tedit`
+
+This keeps `tedit-update` working even if you call it from a random directory.
+
+---
+
+### Common Tasks (tooling quickies)
+
+```bash
+# Fresh setup
+git clone https://github.com/RobertFlexx/tedit
+cd tedit
+sudo sh init.sh
+sudo tedit-install
+
+# Update later
+sudo tedit-update
+
+# Local-only install (no sudo)
+sh install.sh
+
+# Nuke everything (careful)
+sudo sh uninstall.sh --purge --purge-repo -y
+```
+
+---
+
+### Troubleshooting
+
+* **`Up to date.` but your local changes aren’t present?** You’re already on the latest commit. If you expected different code, check your remote/branch or run `git remote -v && git status`.
+* **Dirty tree errors?** The updater **auto-stashes** and pops after pulling. If it can’t auto-resolve, it’ll leave a stash and note it in the log.
+* **PATH still missing?** Re-open your shell or run:
+
+  ```bash
+  export PATH="/usr/local/bin:$PATH"         # system
+  export PATH="$HOME/.local/bin:$PATH"       # user
+  ```
+* **Man page not found?** Some distros don’t compress/update man DB automatically. Reinstall and verify `man -w tedit`, or run `mandb`/`makewhatis` (root may be required).

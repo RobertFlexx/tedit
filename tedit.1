@@ -1,12 +1,24 @@
 .TH TEDIT 1 "October 2025" "tedit 1.0" "User Commands"
 .SH NAME
-tedit \- a minimal yet mighty command-line text editor
+tedit - a minimal yet mighty command-line text editor
 .SH SYNOPSIS
 .B tedit
 .RI [ file ]
 .br
 .B tedit
 .RI [ options ]
+.P
+The repository also ships helper tools used for install/update/uninstall:
+.P
+.B tedit-install
+.RI [ VERBOSE=1 ]
+.br
+.B tedit-update
+.RI [ VERBOSE=1 ]
+.br
+.B tedit-uninstall
+.RI [ --purge-user-data | --purge-repo | --purge ]
+.RI [ -y | --yes ]
 .SH DESCRIPTION
 .B tedit
 is a lightweight, command-line text editor inspired by
@@ -15,31 +27,29 @@ and
 .BR ex (1),
 but enhanced with modern features such as syntax highlighting, undo/redo history,
 atomic saves, backups, autosave snapshots, themes, and hooks.
-
+.P
 It provides a clean, scriptable command interface with familiar operations
 for editing, searching, replacing, and filtering text ranges, all in a single
 fast, portable C++17 binary.
-
 .SH FEATURES
-.IP \[bu] 2
+.IP [bu] 2
 Atomic file saves and optional backups for safety.
-.IP \[bu]
+.IP [bu]
 Undo/redo stack with up to 200 operations.
-.IP \[bu]
+.IP [bu]
 Syntax highlighting with auto-detection (C/C++, Python, Shell, Ruby, JSON, etc.).
-.IP \[bu]
+.IP [bu]
 Configurable themes and color schemes.
-.IP \[bu]
+.IP [bu]
 Directory navigation and file listing via \fB:cd\fR, \fB:ls\fR, and \fB:pwd\fR.
-.IP \[bu]
+.IP [bu]
 Shell filters for piping text through external commands.
-.IP \[bu]
+.IP [bu]
 Multiple buffers and diff viewing.
-.IP \[bu]
+.IP [bu]
 Hooks for \fIon_save\fR and \fIon_quit\fR events.
-.IP \[bu]
+.IP [bu]
 Optional privileged saves via \fBdoas\fR.
-
 .SH USAGE
 Run
 .B tedit
@@ -70,7 +80,6 @@ Common editor commands:
 :wq                # save and quit
 .EE
 .RE
-
 .SH FILES
 .IP "~/.teditrc"
 Configuration file for preferences (theme, line numbers, autosave, etc.).
@@ -82,19 +91,86 @@ User-defined script executed on exit.
 Optional banner file printed on startup.
 .IP "~/.tedit-recover-*"
 Autosave recovery snapshots.
-
 .SH TOOLS
-The repository includes several helper scripts:
+The repository includes helper scripts with a cinematic progress bar and spinner.
+These tools detect your package manager, install missing build dependencies, and
+log verbosely to temporary files.
 .TP
 .B install.sh
-Detects dependencies, builds, and installs \fBtedit\fR automatically with progress display.
-.TP
-.B uninstall.sh
-Removes \fBtedit\fR and related PATH entries from your system.
+Detects dependencies (\fBmake\fR, a C++17 compiler, etc.), builds, and installs
+\fBtedit\fR automatically with a progress display. On systems using Gentoo,
+shows a yellow note and may run an interactive \fBemerge\fR. Installs to
+\fI/usr/local/bin\fR when run with privileges, or \fI~/.local/bin\fR without.
 .TP
 .B update.sh
-Checks for git updates; if none, prints “Tedit is up to date.” Otherwise pulls, rebuilds, and reinstalls.
+Checks for git updates quietly; if none are available it prints exactly:
+\fIUp to date.\fR
+Otherwise it pulls (preferring rebase), rebuilds, reinstalls, and optionally
+strips the binary. Local uncommitted changes are auto-stashed and restored.
+.TP
+.B uninstall.sh
+Removes \fBtedit\fR, man pages, installer wrappers, PATH entries added by the
+installer, and local build artifacts. Supports purge flags (see below).
+.PP
+The scripts write logs to:
+.PP
+.RS
+.EX
+/tmp/tedit-install.XXXXXX.log
+/tmp/tedit-update.XXXXXX.log
+/tmp/tedit-uninstall.XXXXXX.log
+.EE
+.RE
+.PP
+Set \fBVERBOSE=1\fR to stream command output instead of using the spinner.
+.SH WRAPPERS
+After running \fBinit.sh\fR once inside the repo, small wrapper commands are
+installed to your PATH so you can run project tools from anywhere:
+.PP
+.RS
+.EX
+tedit-install
+.ti +2
+tedit-update
+.ti +2
+tedit-uninstall
+.EE
+.RE
+.PP
+Wrappers remember the repo location and \fBcd\fR into it before executing
+\fBinstall.sh\fR/\fBupdate.sh\fR/\fBuninstall.sh\fR, keeping builds predictable.
+.PP
+If a wrapper loses track of the repo, you can point it at the correct clone by
+creating a marker file or using an environment variable:
+.PP
+.RS
+.EX
 
+# One-time marker (replace with your absolute repo path):
+
+sudo mkdir -p /usr/local/share/tedit
+printf '%s\n' "/path/to/tedit" | sudo tee /usr/local/share/tedit/repo >/dev/null
+
+# Per-call override:
+
+TEDIT_REPO="/path/to/tedit" sudo tedit-update
+.EE
+.RE
+.SH UNINSTALL FLAGS
+.TP
+.B --purge-user-data
+Remove \fI~/.teditrc\fR, \fI~/.tedit_banner\fR, \fI~/.tedit/hooks\fR, and
+\fI~/.tedit-recover-*\fR.
+.TP
+.B --purge-repo
+Remove the current git repository directory (asks for confirmation unless
+\fB--yes\fR is provided).
+.TP
+.B --purge
+Do both \fB--purge-user-data\fR and \fB--purge-repo\fR.
+.TP
+.B -y, --yes
+Assume "yes" to prompts (non-interactive).
 .SH CONFIGURATION
 Configuration options are set in \fI~/.teditrc\fR:
 .PP
@@ -107,28 +183,39 @@ autosave=120
 wrap=on
 truncate=off
 .EE
-
+.SH ENVIRONMENT
+.TP
+.B TEDIT_REPO
+Absolute path to the \fBtedit\fR git repository. If set, wrappers and tools
+will use this path to locate the source when running from arbitrary directories.
+.TP
+.B ZDOTDIR
+If set, \fI$ZDOTDIR/.zprofile\fR may be updated by the installer when adding
+\fI~/.local/bin\fR to PATH for user installs.
 .SH PRIVILEGED SAVES
 If saving fails due to permissions, \fBtedit\fR writes to a temporary file
-and uses \fBdoas mv\fR to move it into place. Configure \fBdoas.conf\fR
-to allow this behavior, or run \fBtedit\fR as root for system files.
-
+and uses \fBdoas mv\fR to move it into place. Configure \fIdoas.conf\fR
+accordingly, or run \fBtedit\fR as root for system files.
 .SH EXIT STATUS
 .TP
 .B 0
 Successful completion.
 .TP
 .B 1
-An error occurred (file not found, permission denied, etc.).
-
+An error occurred (file not found, permission denied, build failure, etc.).
 .SH AUTHOR
 Written by Robert (aka RobertFlexx).
-
 .SH HOMEPAGE
 Project page and source code:
-.UR https://github.com/RobertFlexx/tedit
+.UR [https://github.com/RobertFlexx/tedit](https://github.com/RobertFlexx/tedit)
 .UE
-
+.SH SEE ALSO
+.BR ed (1),
+.BR ex (1),
+.BR doas (1),
+.BR sudo (8),
+.BR make (1),
+.BR git (1)
 .SH LICENSE
-BSD 3-Clause License. You are free to use, modify, and redistribute
-provided the copyright notice is retained.
+BSD 3-Clause License. You are free to use, modify, and redistribute provided the
+copyright notice is retained.

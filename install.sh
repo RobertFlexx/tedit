@@ -1,14 +1,5 @@
 #!/usr/bin/env sh
-# tedit installer (POSIX sh)
-# - Installs build deps if missing (apt/dnf/yum/pacman/zypper/apk/xbps/eopkg/emerge/brew)
-# - Builds and installs tedit
-# - Installs man page (tedit.1) if present
-# - Uses sudo or doas if available; else installs to ~/.local/bin
-# - Adds to PATH if needed
-# Usage:
-#   sh install.sh
-#   VERBOSE=1 sh install.sh
-#   PREFIX=/custom sh install.sh
+# tedit installer (POSIX sh) — cinematic bar + spinner, no prompt glitches
 
 set -eu
 
@@ -17,20 +8,25 @@ DEFAULT_PREFIX="/usr/local"
 USER_PREFIX="${PREFIX:-$HOME/.local}"
 LOG="$(mktemp -t ${APP_NAME}-install.XXXXXX.log)"
 
-# --------- Colors ---------
+# --- Enter script dir (wrappers/symlinks safe) ---
+SCRIPT_DIR=$(
+  CDPATH= cd -P -- "$(dirname -- "$0")" 2>/dev/null && pwd
+)
+cd "$SCRIPT_DIR" || { echo "ERROR: cannot cd to $SCRIPT_DIR"; exit 2; }
+
+# --- Colors ---
 if [ -t 1 ] && command -v tput >/dev/null 2>&1; then
-  GREEN="$(tput setaf 2)"; YELLOW="$(tput setaf 3)"
-  RED="$(tput setaf 1)"; CYAN="$(tput setaf 6)"
+  GREEN="$(tput setaf 2)"; YELLOW="$(tput setaf 3)"; RED="$(tput setaf 1)"; CYAN="$(tput setaf 6)"
   BOLD="$(tput bold)"; RESET="$(tput sgr0)"
 else
   GREEN=""; YELLOW=""; RED=""; CYAN=""; BOLD=""; RESET=""
 fi
 
-say() { printf "%s\n" "$*" | tee -a "$LOG"; }
-die() { printf "%sERROR:%s %s\n" "$RED" "$RESET" "$*" | tee -a "$LOG" >&2; exit 1; }
-have() { command -v "$1" >/dev/null 2>&1; }
+say() { printf "%s\n" "$*" | tee -a "$LOG" >/dev/null; }
+die(){ finish_ui 2>/dev/null || :; printf "%sERROR:%s %s\n" "$RED" "$RESET" "$*" | tee -a "$LOG" >&2; exit 1; }
+have(){ command -v "$1" >/dev/null 2>&1; }
 
-# --------- Privilege helper ---------
+# --- Privileges ---
 SUDO=""
 if [ "$(id -u)" -ne 0 ]; then
   if have sudo; then SUDO="sudo"
@@ -38,174 +34,220 @@ if [ "$(id -u)" -ne 0 ]; then
   fi
 fi
 
-# --------- Package manager detection ---------
-PKG=""
-for p in apt dnf yum pacman zypper apk xbps-install eopkg emerge brew; do
-  command -v "$p" >/dev/null 2>&1 && PKG="$p" && break
-done
+# --- UI: progress + spinner (spinner NEVER used when a prompt may appear) ---
+is_utf(){ echo "${LC_ALL:-${LANG:-}}" | grep -qi 'utf-8'; }
+repeat(){ n=$1; ch=$2; i=0; out=""; while [ "$i" -lt "$n" ]; do out="$out$ch"; i=$((i+1)); done; printf "%s" "$out"; }
+term_width(){ w=80; if command -v tput >/dev/null 2>&1; then w=$(tput cols 2>/dev/null || echo 80); fi; [ "$w" -gt 24 ] || w=80; echo "$w"; }
 
-# --------- Progress bar (fixed 8 stages, capped at 100%) ---------
-TOTAL_STEPS=8
-STEP=0
-BAR_WIDTH=36
+[ -f "tedit.cpp" ] || die "Please run this from the ${APP_NAME} source directory."
 
-progress() {
-  STEP=$(( STEP + 1 ))
-  [ $STEP -gt $TOTAL_STEPS ] && STEP=$TOTAL_STEPS
-  pct=$(( 100 * STEP / TOTAL_STEPS ))
-  filled=$(( BAR_WIDTH * STEP / TOTAL_STEPS ))
-  unfilled=$(( BAR_WIDTH - filled ))
-  printf "\r[%s%s] %3d%%  %s" \
-    "$(printf '%0.s#' $(seq 1 $filled))" \
-    "$(printf '%0.s ' $(seq 1 $unfilled))" \
-    "$pct" "$1"
+if is_utf; then FIL="█"; EMP="░"; else FIL="#"; EMP="-"; fi
+TOTAL=12 STEP=0
+
+draw_bar(){
+  n=$1; tot=$2; msg=$3
+  tw=$(term_width); bw=$(( tw - 32 )); [ "$bw" -lt 12 ] && bw=12; [ "$bw" -gt 60 ] && bw=60
+  [ "$tot" -gt 0 ] || tot=1
+  pct=$(( n*100 / tot )); fill=$(( n*bw / tot )); empty=$(( bw - fill ))
+  bar="$(repeat "$fill" "$FIL")$(repeat "$empty" "$EMP")"
+  printf "\r\033[K%s%s[%s]%s %d/%d (%d%%) %s" "$CYAN" "$BOLD" "$bar" "$RESET" "$n" "$tot" "$pct" "$msg"
+  printf "[%s] %d/%d (%d%%) %s\n" "$(repeat "$fill" "#")$(repeat "$empty" "-")" "$n" "$tot" "$pct" "$msg" >>"$LOG"
 }
+next(){ STEP=$((STEP+1)); [ "$STEP" -gt "$TOTAL" ] && STEP="$TOTAL"; draw_bar "$STEP" "$TOTAL" "$1"; }
 
-# --------- Spinner (for long-running commands) ---------
-spinner() {
+spinner(){
   msg="$1"; shift
-  # Background the command, log output
-  if [ "${VERBOSE-0}" = "1" ]; then
-    sh -c "$*" 2>&1 | tee -a "$LOG" &
-  else
-    sh -c "$*" >>"$LOG" 2>&1 &
+  if [ "${VERBOSE-0}" = "1" ] || [ ! -t 1 ]; then
+    sh -c "$*" 2>&1 | tee -a "$LOG"
+    return $?
   fi
+  sh -c "$*" >>"$LOG" 2>&1 &
   pid=$!
-  chars='|/-\'
-  i=1
+  frames='-\|/.'; i=0
   while kill -0 "$pid" 2>/dev/null; do
-    c=$(printf %s "$chars" | cut -c $i)
-    printf "\r[%s] %s" "$c" "$msg"
-    i=$(( (i % 4) + 1 ))
+    i=$(( (i+1) % 4 )); c=$(printf %s "$frames" | cut -c $((i+1)))
+    printf "\r\033[K[%s] %s" "$c" "$msg"
     sleep 0.1
   done
   wait "$pid" 2>/dev/null || true
-  printf "\r\033[2K"
+  printf "\r\033[K"
 }
 
-# --------- Dependency checks ---------
-need_deps() {
+# Pre-auth in FOREGROUND (clean line; no spinner), so prompts don’t glitch.
+auth_once(){
+  [ -z "$SUDO" ] && return 0
+  printf "\r\033[K%s%sElevating privileges (may prompt once)...%s\n" "$CYAN" "$BOLD" "$RESET"
+  if [ "$SUDO" = "sudo" ]; then sudo -v
+  else $SUDO true
+  fi
+}
+
+# Root runner: try non-interactive first; if auth needed, run FOREGROUND w/ prompt.
+run_root(){
+  msg="$1"; cmd="$2"
+  if [ -z "$SUDO" ]; then
+    spinner "$msg" "$cmd"
+    return
+  fi
+  if $SUDO -n true 2>/dev/null; then
+    spinner "$msg" "$SUDO $cmd"
+  else
+    # clear spinner/progress line and prompt cleanly
+    printf "\r\033[K%s%s%s %s\n" "$YELLOW" "[auth]" "$RESET" "$msg"
+    $SUDO sh -c "$cmd" 2>&1 | tee -a "$LOG"
+    # redraw last progress step to keep the bar pretty
+    draw_bar "$STEP" "$TOTAL" "$msg"
+  fi
+}
+
+# Hide cursor (restore on exit)
+CURSOR_HIDE=""; CURSOR_SHOW=""
+if command -v tput >/dev/null 2>&1; then CURSOR_HIDE="$(tput civis 2>/dev/null || true)"; CURSOR_SHOW="$(tput cnorm 2>/dev/null || true)"; fi
+printf "%s" "$CURSOR_HIDE"
+finish_ui(){ printf "\r\033[K\n%s" "$CURSOR_SHOW"; }
+trap 'finish_ui' EXIT INT TERM
+
+# --- Detect package manager (keep apk for Chimera/Alpine) ---
+PKG=""
+if [ -r /etc/os-release ]; then . /etc/os-release || true; fi
+case "${ID:-}" in
+  alpine|postmarketos|chimera) PKG="apk" ;;
+  arch|manjaro|endeavouros|arco|artix) PKG="pacman" ;;
+  debian|ubuntu|pop|elementary|linuxmint|zorin) PKG="apt" ;;
+  fedora|rhel|centos|rocky|almalinux) PKG="dnf" ;;
+  opensuse*|sles) PKG="zypper" ;;
+  gentoo) PKG="emerge" ;;
+  void) PKG="xbps-install" ;;
+  solus) PKG="eopkg" ;;
+esac
+[ -z "$PKG" ] && { have apk && PKG="apk" || :; }
+[ -z "$PKG" ] && { have apt && PKG="apt" || :; }
+[ -z "$PKG" ] && { have dnf && PKG="dnf" || :; }
+[ -z "$PKG" ] && { have yum && PKG="yum" || :; }
+[ -z "$PKG" ] && { have pacman && PKG="pacman" || :; }
+[ -z "$PKG" ] && { have zypper && PKG="zypper" || :; }
+[ -z "$PKG" ] && { have xbps-install && PKG="xbps-install" || :; }
+[ -z "$PKG" ] && { have eopkg && PKG="eopkg" || :; }
+[ -z "$PKG" ] && { have emerge && PKG="emerge" || :; }
+[ -z "$PKG" ] && { have brew && [ "$(uname -s)" = "Darwin" ] && PKG="brew" || :; }
+
+need_deps(){
   need=0
   have make || need=1
   if have c++; then :; elif have g++; then :; elif have clang++; then :; else need=1; fi
   return $need
 }
 
-install_deps() {
+install_deps(){
+  # Gentoo heads-up (colored)
+  if [ "${ID:-}" = "gentoo" ] || [ "$PKG" = "emerge" ]; then
+    printf "%sGentoo detected — emerging toolchain (may be interactive).%s\n" "$YELLOW" "$RESET" | tee -a "$LOG" >/dev/null
+  fi
   case "$PKG" in
+    apk)
+      run_root "Installing build-base..." "apk add --no-cache --update-cache build-base"
+      ;;
     apt)
-      spinner "Updating APT index..."    "${SUDO:+$SUDO }apt-get update -y || ${SUDO:+$SUDO }apt update -y"
-      spinner "Installing build tools..." "${SUDO:+$SUDO }apt-get install -y build-essential || ${SUDO:+$SUDO }apt install -y build-essential"
+      run_root "Updating APT index..."     "sh -c 'apt-get update -y || apt update -y'"
+      run_root "Installing build tools..." "sh -c 'apt-get install -y build-essential make || apt install -y build-essential make'"
       ;;
     dnf|yum)
-      spinner "Installing dev tools..."  "${SUDO:+$SUDO }$PKG -y groupinstall 'Development Tools' || ${SUDO:+$SUDO }$PKG install -y make gcc-c++"
+      run_root "Installing dev tools..."   "$PKG install -y make gcc gcc-c++"
       ;;
     pacman)
-      spinner "Syncing pacman..."        "${SUDO:+$SUDO }pacman -Sy --noconfirm"
-      spinner "Installing gcc & make..." "${SUDO:+$SUDO }pacman -S --needed --noconfirm gcc make"
+      run_root "Syncing pacman..."         "pacman -Sy --noconfirm"
+      run_root "Installing gcc & make..."  "pacman -S --needed --noconfirm gcc make"
       ;;
     zypper)
-      spinner "Installing C/C++ tools..." "${SUDO:+$SUDO }zypper -n install -t pattern devel_C_C++ || ${SUDO:+$SUDO }zypper -n install make gcc-c++"
-      ;;
-    apk)
-      spinner "Installing build-base..." "${SUDO:+$SUDO }apk add --no-cache build-base"
+      run_root "Installing C/C++ tools..." "zypper -n install make gcc-c++"
       ;;
     xbps-install)
-      spinner "Installing gcc & make..." "${SUDO:+$SUDO }xbps-install -Sy gcc make"
+      run_root "Installing gcc & make..."  "xbps-install -Sy gcc make"
       ;;
-    eopkg) # Solus
-      spinner "Installing system.devel..." "${SUDO:+$SUDO }eopkg -y it -c system.devel || ${SUDO:+$SUDO }eopkg -y it make gcc binutils"
+    eopkg)
+      run_root "Installing system.devel..." "sh -c 'eopkg -y it -c system.devel || eopkg -y it make gcc binutils'"
       ;;
-    emerge) # Gentoo (may be interactive)
-      say "${YELLOW}Gentoo detected — emerging toolchain (may be interactive).${RESET}"
-      spinner "Emerging gcc/make..."     "${SUDO:+$SUDO }emerge --quiet-build=y --oneshot sys-devel/gcc sys-devel/make || true"
+    emerge)
+      run_root "Emerging gcc & make..."    "emerge --quiet-build=y --oneshot sys-devel/gcc sys-devel/make || true"
       ;;
     brew)
-      spinner "Installing make (brew)..." "brew install make || true"
+      spinner "Installing make..." "brew install make || true"
       if ! have clang++; then
-        say "${YELLOW}Xcode Command Line Tools required; a dialog may appear.${RESET}"
+        printf "%sXcode Command Line Tools may be required.%s\n" "$YELLOW" "$RESET" | tee -a "$LOG" >/dev/null
         spinner "Invoking xcode-select..." "xcode-select --install || true"
       fi
       ;;
     *)
-      die "Unsupported/undetected package manager. Install make + a C++17 compiler manually."
+      die "Unsupported/undetected package manager. Install make + a C++17 compiler, then re-run."
       ;;
   esac
 
-  # Re-check
+  # verify post-install
   have make || die "make still missing after install."
   if have c++; then :; elif have g++; then :; elif have clang++; then :; else die "No C++17 compiler after install."; fi
 }
 
-choose_cxx() {
-  if have c++; then printf %s "c++"
+choose_cxx(){
+  if   have c++; then printf %s "c++"
   elif have g++; then printf %s "g++"
   elif have clang++; then printf %s "clang++"
   else printf %s "c++"
   fi
 }
 
-# --------- Begin ---------
-say "${CYAN}${BOLD}Installing ${APP_NAME}...${RESET}"
+# --- Banner + Steps ---
+printf "%s%s>> Installing %s <<%s\n" "$CYAN" "$BOLD" "$APP_NAME" "$RESET" | tee -a "$LOG" >/dev/null
 
-progress "Checking environment..."
-[ -f "tedit.cpp" ] || die "Please run this from the ${APP_NAME} source directory."
-sleep 0.1
+next "Checking environment"
 
-progress "Detecting package manager..."
-# (PKG already detected above)
-sleep 0.1
+next "Preparing privileges"
+auth_once
+draw_bar "$STEP" "$TOTAL" "Preparing privileges"
 
-progress "Checking build dependencies..."
-if need_deps; then
-  [ -z "$PKG" ] && die "No package manager found. Install make + a C++17 compiler, then re-run."
-  install_deps
-fi
-sleep 0.1
+next "Detecting package manager"
+[ -n "$PKG" ] || die "No supported package manager detected."
 
-progress "Selecting compiler..."
-CXX_BIN="$(choose_cxx)"
-# Don't print a separate inline message that garbles the bar; show it in the next step.
-sleep 0.1
+next "Checking build dependencies"
+if need_deps; then install_deps; fi
 
-progress "Building (${CXX_BIN})..."
-spinner "Running make..." "CXX='$CXX_BIN' make"
+next "Selecting compiler"
+CXX_BIN="$(choose_cxx)"; printf "Using %s\n" "$CXX_BIN" >>"$LOG"
 
-progress "Installing binary..."
+next "Building (${CXX_BIN})"
+spinner "make ..." "CXX='$CXX_BIN' make"
+
+next "Installing binary"
 TARGET_PREFIX="$DEFAULT_PREFIX"
-INSTALL_CMD="${SUDO:+$SUDO }make install"
+INSTALL_CMD="make install"
+if [ -n "$SUDO" ]; then INSTALL_CMD="$SUDO $INSTALL_CMD"; fi
 if [ -z "$SUDO" ] && [ "$(id -u)" -ne 0 ]; then
   TARGET_PREFIX="$USER_PREFIX"
   INSTALL_CMD="make PREFIX='$TARGET_PREFIX' install"
-  say "${YELLOW}No sudo/doas detected — installing to ${TARGET_PREFIX}/bin${RESET}"
+  printf "%sNote:%s installing to %s/bin\n" "$YELLOW" "$RESET" "$TARGET_PREFIX" | tee -a "$LOG" >/dev/null
 fi
-spinner "Installing..." "$INSTALL_CMD"
+# Use root-aware runner (no spinner if it needs a prompt)
+if [ -n "$SUDO" ]; then run_root "Installing..." "${INSTALL_CMD#"$SUDO "}"
+else spinner "Installing..." "$INSTALL_CMD"
+fi
 
-# Optional: strip binary
+next "Optimizing binary"
 if have strip; then
-  DEST_BIN="${TARGET_PREFIX}/bin/${APP_NAME}"
-  if [ -e "$DEST_BIN" ]; then
-    spinner "Stripping binary..." "${SUDO:+$SUDO }strip \"$DEST_BIN\" 2>/dev/null || true"
-  fi
+  BIN="${TARGET_PREFIX}/bin/${APP_NAME}"
+  [ -e "$BIN" ] && spinner "Stripping binary..." "${SUDO:+$SUDO }strip '$BIN' 2>/dev/null || true"
 fi
 
-# Man page (optional)
-progress "Installing man page (if present)..."
+next "Installing man page (if present)"
 if [ -f "./${APP_NAME}.1" ]; then
   MAN_DIR="${TARGET_PREFIX}/share/man/man1"
-  spinner "Installing ${APP_NAME}.1..." "${SUDO:+$SUDO }mkdir -p \"$MAN_DIR\" && ${SUDO:+$SUDO }install -m 0644 \"./${APP_NAME}.1\" \"$MAN_DIR/${APP_NAME}.1\""
-  # Try gzip if man pages are normally compressed
-  if have gzip; then
-    spinner "Compressing man page..." "${SUDO:+$SUDO }gzip -f -9 \"$MAN_DIR/${APP_NAME}.1\" 2>/dev/null || true"
-  fi
-  # Refresh man database if available
-  if have mandb; then
-    spinner "Refreshing man database..." "${SUDO:+$SUDO }mandb -q 2>/dev/null || true"
-  fi
+  run_root "Copying man page..." "mkdir -p '$MAN_DIR' && install -m 0644 './${APP_NAME}.1' '$MAN_DIR/${APP_NAME}.1'"
+  if have gzip; then run_root "Compressing man page..." "gzip -f -9 '$MAN_DIR/${APP_NAME}.1' 2>/dev/null || true"; fi
+  if have mandb; then run_root "Refreshing man database..." "mandb -q 2>/dev/null || true"
+  elif have makewhatis; then run_root "Refreshing man database..." "makewhatis 2>/dev/null || true"; fi
+else
+  printf "No local man page; skipping.\n" >>"$LOG"
 fi
 
-# PATH
-progress "Checking PATH..."
+next "Checking PATH"
 BIN_DIR="${TARGET_PREFIX}/bin"
 if ! printf "%s" ":$PATH:" | grep -q ":$BIN_DIR:"; then
   PROFILE=""
@@ -213,17 +255,15 @@ if ! printf "%s" ":$PATH:" | grep -q ":$BIN_DIR:"; then
   [ -z "$PROFILE" ] && [ -w "$HOME/.zprofile" 2>/dev/null ] && PROFILE="$HOME/.zprofile"
   [ -z "$PROFILE" ] && [ -w "$HOME/.bash_profile" 2>/dev/null ] && PROFILE="$HOME/.bash_profile"
   [ -z "$PROFILE" ] && PROFILE="$HOME/.profile"
-
-  mkdir -p "$(dirname "$PROFILE")" 2>/dev/null || true
+  mkdir -p "$(dirname "$PROFILE")" 2>/dev/null || :
   if ! grep -F "$BIN_DIR" "$PROFILE" >/dev/null 2>&1; then
     printf '\n# Added by %s installer\nexport PATH="%s:$PATH"\n' "$APP_NAME" "$BIN_DIR" >> "$PROFILE"
     say "Added ${BIN_DIR} to PATH in ${PROFILE}."
-    say "Restart your shell or run: ${BOLD}export PATH=\"${BIN_DIR}:\$PATH\"${RESET}"
+    say "Restart shell or run: ${BOLD}export PATH=\"${BIN_DIR}:\$PATH\"${RESET}"
   fi
 fi
 
-# Finalize (no extra bar step -> no >100%)
-printf "\n"
-echo "${GREEN}${BOLD}✅ ${APP_NAME} installed successfully!${RESET}"
-echo "Log: $LOG"
-echo "Try: ${BOLD}${APP_NAME}${RESET}  (manpage: ${BOLD}man ${APP_NAME}${RESET} if installed)"
+next "Done"
+finish_ui
+printf "%s%s✅ %s installed successfully.%s\n" "$GREEN" "$BOLD" "$APP_NAME" "$RESET"
+printf "Log: %s\n" "$LOG"
