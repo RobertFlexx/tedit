@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
+#define TEDIT_VERSION "1.0.2"
 #include <algorithm>
 #include <cerrno>
 #include <cctype>
@@ -633,8 +634,7 @@ static void ls_list(const string& path, bool all, bool longfmt){
             struct stat sb{};
             if(::stat(path.c_str(), &sb)==0){
                 cout<<perm_string(sb.st_mode)<<" "
-                <<std::setw(8)<<(long long)sb.st_size<<"  "
-                <<fs::path(path).filename().string()<<"\n";
+                <<std::setw(8)<<(long long)sb.st_size<<"  "<<fs::path(path).filename().string()<<"\n";
             }else{
                 cout<<"?????????? "<<std::setw(8)<<"?"<<"  "<<path<<"\n";
             }
@@ -999,7 +999,7 @@ struct Editor{
             "append","a","insert","i","delete","d","move","m","join","find","findi","findre",
             "repl","replg","read","undo","u","redo","set","filter","ls","pwd","number",
             "goto","n","N","new","bnext","bprev","lsb","theme","highlight","alias","diff",
-            "cd","clear"
+            "cd","clear","version"
         };
         lr.set_theme_colors(P);
     }
@@ -1032,7 +1032,7 @@ struct Editor{
         out<<"highlight="<<(buf.highlight?"on":"off")<<"\n";
         out<<"number="<<(buf.number?"on":"off")<<"\n";
         out<<"backup="<<(buf.backup?"on":"off")<<"\n";
-        out<<"autosave="<<autosave_sec<<"\n";
+        out<<"autosave="<<(autosave_sec)<<"\n";
         out<<"wrap="<<(wrap_long?"on":"off")<<"\n";
         out<<"truncate="<<(truncate_long?"on":"off")<<"\n";
         for(auto& kv: aliases) out<<"alias\t"<<esc(kv.first)<<"\t"<<esc(kv.second)<<"\n";
@@ -1163,6 +1163,7 @@ struct Editor{
         CMD("ls [-l] [-a] [path] | pwd","", "filesystem helpers");
         CMD("cd <dir>",               "", "change directory (./ ../ ~/)");
         CMD("clear",                  "", "clear screen and scrollback");
+        CMD("version",                "", "show tedit version");
         cout<<P.dim<<"Tab: first word => commands only; after 'cd ' => directories only."<<C_RESET<<"\n";
     }
 
@@ -1665,6 +1666,11 @@ struct Editor{
         }
 
         if(lc=="clear"){ clear_screen(); return true; }
+
+        if(lc=="version" || lc=="ver"){
+            cout<<P.title<<"tedit "<<TEDIT_VERSION<<C_RESET<<"\n";
+            return true;
+        }
 
         cout<<P.warn<<"unknown command — type 'help'"<<C_RESET<<"\n"; return true;
     }
