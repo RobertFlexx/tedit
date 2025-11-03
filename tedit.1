@@ -1,4 +1,4 @@
-.TH TEDIT 1 "October 2025" "tedit 1.0" "User Commands"
+.TH TEDIT 1 "October 2025" "tedit 2.0.0" "User Commands"
 .SH NAME
 tedit - a minimal yet mighty command-line text editor
 .SH SYNOPSIS
@@ -31,25 +31,45 @@ atomic saves, backups, autosave snapshots, themes, and hooks.
 It provides a clean, scriptable command interface with familiar operations
 for editing, searching, replacing, and filtering text ranges, all in a single
 fast, portable C++17 binary.
+.P
+Per-user configuration and Lua plugins are stored under
+.IR ~/tedit-config ,
+keeping editor state and extensions self-contained in your home directory.
 .SH FEATURES
 .IP [bu] 2
-Atomic file saves and optional backups for safety.
+Atomic file saves and optional backups for safety (write to a temporary file,
+then \fBrename(2)\fR into place, with optional \fIfilename~\fR backup).
+.IP [bu]
+Crash recovery and autosave snapshots written periodically to files such as
+\fI~/.tedit-recover-*\fR.
 .IP [bu]
 Undo/redo stack with up to 200 operations.
 .IP [bu]
-Syntax highlighting with auto-detection (C/C++, Python, Shell, Ruby, JSON, etc.).
+Syntax highlighting with auto-detection for C/C++, Python, Shell, Ruby, JS/TS,
+HTML, CSS, JSON, and more. Highlighting can be toggled via
+\fB:highlight on\fR/\fBoff\fR and overridden with
+\fB:set lang <name>\fR.
 .IP [bu]
-Configurable themes and color schemes.
+Configurable themes and color schemes (e.g. \fBdefault\fR, \fBdark\fR,
+\fBneon\fR, \fBmatrix\fR, \fBpaper\fR) using \fB:theme <name>\fR.
+.IP [bu]
+Command history and tab completion: first word completion for editor commands,
+filesystem completion for paths, and directory-only completion for
+.BR :cd .
 .IP [bu]
 Directory navigation and file listing via \fB:cd\fR, \fB:ls\fR, and \fB:pwd\fR.
 .IP [bu]
-Shell filters for piping text through external commands.
+Shell filters for piping text ranges through external commands.
 .IP [bu]
-Multiple buffers and diff viewing.
+Multiple buffers and diff viewing against the on-disk file.
 .IP [bu]
 Hooks for \fIon_save\fR and \fIon_quit\fR events.
 .IP [bu]
-Optional privileged saves via \fBdoas\fR.
+Lua scripting and a simple plugin system loaded from
+.IR ~/tedit-config/plugins .
+.IP [bu]
+Optional privileged saves via \fBdoas\fR, used as a fallback when a normal
+atomic rename fails due to permissions.
 .SH USAGE
 Run
 .B tedit
@@ -77,12 +97,25 @@ Common editor commands:
 :set number on     # show line numbers
 :find text         # search
 :repl old new      # replace
+:theme neon        # change theme
+:highlight on      # enable syntax highlighting
+:lua tedit_echo("hi")   # run a small Lua snippet
+:plugins           # list loaded Lua plugins
 :wq                # save and quit
 .EE
 .RE
+.PP
+A typical workflow is to \fBcd\fR into a project directory and then run
+.BR tedit ,
+so that atomic saves stay on the same filesystem and filters, hooks, and
+relative paths behave predictably.
 .SH FILES
-.IP "~/.teditrc"
-Configuration file for preferences (theme, line numbers, autosave, etc.).
+.IP "~/tedit-config/.teditrc"
+Configuration file for preferences (theme, line numbers, autosave, wrapping,
+etc.).
+.IP "~/tedit-config/plugins"
+Per-user Lua plugin directory. Any \fB*.lua\fR files in this directory are
+loaded at startup; errors are reported in the editor.
 .IP "~/.tedit/hooks/on_save"
 User-defined script executed after each save.
 .IP "~/.tedit/hooks/on_quit"
@@ -90,7 +123,7 @@ User-defined script executed on exit.
 .IP "~/.tedit_banner"
 Optional banner file printed on startup.
 .IP "~/.tedit-recover-*"
-Autosave recovery snapshots.
+Autosave recovery snapshots, used for crash recovery.
 .SH TOOLS
 The repository includes helper scripts with a cinematic progress bar and spinner.
 These tools detect your package manager, install missing build dependencies, and
@@ -159,7 +192,7 @@ TEDIT_REPO="/path/to/tedit" sudo tedit-update
 .SH UNINSTALL FLAGS
 .TP
 .B --purge-user-data
-Remove \fI~/.teditrc\fR, \fI~/.tedit_banner\fR, \fI~/.tedit/hooks\fR, and
+Remove \fI~/tedit-config/.teditrc\fR, \fI~/.tedit_banner\fR, \fI~/.tedit/hooks\fR, and
 \fI~/.tedit-recover-*\fR.
 .TP
 .B --purge-repo
@@ -172,7 +205,7 @@ Do both \fB--purge-user-data\fR and \fB--purge-repo\fR.
 .B -y, --yes
 Assume "yes" to prompts (non-interactive).
 .SH CONFIGURATION
-Configuration options are set in \fI~/.teditrc\fR:
+Configuration options are set in \fI~/tedit-config/.teditrc\fR:
 .PP
 .EX
 theme=neon
@@ -182,7 +215,41 @@ backup=on
 autosave=120
 wrap=on
 truncate=off
+alias    dd      delete 1-$
+alias    wq!     wq
 .EE
+.SH LUA INTEGRATION AND PLUGINS
+.B tedit
+embeds Lua for lightweight scripting and extension. If built with Lua support,
+the following commands are available from the editor prompt:
+.TP
+.B :lua \fICODE\fR
+Execute an inline Lua snippet.
+.TP
+.B :luafile \fIPATH\fR
+Load and execute a Lua script from the given path.
+.TP
+.B :plugins
+List the names of successfully loaded Lua plugins.
+.TP
+.B :reload-plugins
+Rescan and reload \fB*.lua\fR files from the plugin directory.
+.PP
+Plugins are simple Lua files placed under
+.IR ~/tedit-config/plugins .
+At startup,
+.B tedit
+will attempt to load each \fB*.lua\fR file once; any error messages are printed
+inside the editor.
+.PP
+A few helper functions are exposed to Lua:
+.IP \[bu] 2
+\fBtedit_command(str)\fR – run an editor command as if it was typed at the
+tedit prompt.
+.IP \[bu]
+\fBtedit_echo(str)\fR – print a message using the editor's accent color.
+.IP \[bu]
+\fBtedit_print(line)\fR – print a specific line from the current buffer.
 .SH ENVIRONMENT
 .TP
 .B TEDIT_REPO
@@ -192,10 +259,21 @@ will use this path to locate the source when running from arbitrary directories.
 .B ZDOTDIR
 If set, \fI$ZDOTDIR/.zprofile\fR may be updated by the installer when adding
 \fI~/.local/bin\fR to PATH for user installs.
+.TP
+.B VERBOSE
+When set to a non-empty value (for example \fBVERBOSE=1\fR), the installer,
+updater, and uninstaller scripts stream command output instead of using the
+spinner-style UI. Logs are still written under \fI/tmp\fR as described in
+the TOOLS section.
 .SH PRIVILEGED SAVES
-If saving fails due to permissions, \fBtedit\fR writes to a temporary file
-and uses \fBdoas mv\fR to move it into place. Configure \fIdoas.conf\fR
-accordingly, or run \fBtedit\fR as root for system files.
+.B tedit
+performs saves by writing to a temporary file and then calling
+.BR rename (2)
+for an atomic replace.
+If saving fails due to permissions, \fBtedit\fR can fall back to writing a
+temporary file and using \fBdoas mv\fR to move it into place. Configure
+\fIdoas.conf\fR accordingly, or run \fBtedit\fR as root when editing system
+files.
 .SH EXIT STATUS
 .TP
 .B 0
@@ -214,6 +292,8 @@ Project page and source code:
 .BR ex (1),
 .BR doas (1),
 .BR sudo (8),
+.BR lua (1),
+.BR sh (1),
 .BR make (1),
 .BR git (1)
 .SH LICENSE

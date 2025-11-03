@@ -7,26 +7,46 @@
 ## Highlights (What’s New & Notable)
 
 * **Fast, simple, dependency-free** — pure C++17 single binary.
+
 * **Modern safety**
 
   * Atomic saves (write to `.tmp` → `rename`).
   * Optional backups (`filename~`).
   * Undo/Redo stack (up to 200 ops).
   * **Crash recovery & autosave snapshots** (periodic save to `~/.tedit-recover-*`).
+
 * **Smart CLI** Command history, tab completion (commands first-word, filesystem after), and directory-only completion for `cd`.
+
 * **Syntax highlighting (auto-detect)** C/C++, Python, Shell, Ruby, JS/TS, HTML, CSS, JSON (toggle with `highlight on/off`, override via `set lang <name>`).
+
 * **Themes** `default`, `dark`, `neon`, `matrix`, `paper` (`theme <name>`).
+
 * **Buffers (multi-file)** `new`, `bnext`, `bprev`, `lsb` to hop between files.
+
 * **Diff on demand** `diff` shows changes vs on-disk file.
+
 * **Shell filters** Pipe ranges through any command: `filter 1-20 !sort`.
+
 * **Range-aware write & read** `write [range] <path>`, `read <path> [n]`.
+
 * **Display controls** `set wrap on|off`, `set truncate on|off`, line numbers toggle via `set number on|off` (or `number`).
+
 * **Hooks & flair**
 
   * Run `~/.tedit/hooks/on_save` and `~/.tedit/hooks/on_quit` if present.
   * Optional banner from `~/.tedit_banner`.
   * Confetti on successful saves (because… joy).
+
 * **Privileged saves (doas)** If a save fails for permissions, `tedit` can write to a temp file and `doas mv` it into place (configure `doas` as needed).
+
+* **Lua scripting & plugins**
+
+  * Embedded **Lua 5.4** runtime (if built with Lua dev headers/libs).
+  * Lua helpers exposed: `tedit_command(cmd)`, `tedit_echo(text)`, `tedit_print(line_number)`.
+  * Auto-loads `*.lua` files from `~/tedit-config/plugins` at startup.
+  * `:plugins` shows loaded plugins; `:reload-plugins` reloads from disk.
+  * `:lua <code>` runs inline Lua; `:luafile <path>` runs a Lua script file.
+
 * **New Tools (Utility Scripts)**
 
   * **install.sh** — Installs dependencies, builds, and installs `tedit` automatically with a progress bar and package manager detection.
@@ -171,35 +191,38 @@ tedit> wq
 
 ## Basic Commands (Cheat Sheet)
 
-| Command                           | Description                                            |      |             |                |
-| --------------------------------- | ------------------------------------------------------ | ---- | ----------- | -------------- |
-| `open <file>`                     | Open a file                                            |      |             |                |
-| `w` / `write`                     | Save                                                   |      |             |                |
-| `wq`                              | Save & quit                                            |      |             |                |
-| `q`                               | Quit (prompts if unsaved)                              |      |             |                |
-| `p [range]` / `r <n>`             | Print lines / show one line                            |      |             |                |
-| `a` / `i <n>`                     | Append / insert before line *n* (`.` alone to finish)  |      |             |                |
-| `d [range]` / `m <from> <to>`     | Delete range / move a line                             |      |             |                |
-| `join [range]`                    | Join lines into one                                    |      |             |                |
-| `find` / `findi` / `findre`       | Search (plain / case-insensitive / regex)              |      |             |                |
-| `n` / `N`                         | Next / previous search hit                             |      |             |                |
-| `repl old new` / `replg …`        | Replace first / replace globally per line              |      |             |                |
-| `undo` / `redo`                   | History navigation                                     |      |             |                |
-| `goto <n>`                        | Jump to line *n*                                       |      |             |                |
-| `read <path> [n]`                 | Insert file after line *n* (default: end)              |      |             |                |
-| `write [range] <path>`            | Write range out to a new path                          |      |             |                |
-| `filter <range> !cmd`             | Pipe range through shell and replace                   |      |             |                |
-| `theme <name>`                    | `default`, `dark`, `neon`, `matrix`, `paper`           |      |             |                |
-| `highlight on/off`                | Toggle syntax highlighting                             |      |             |                |
-| `set number                       | backup                                                 | wrap | truncate …` | Editor toggles |
-| `set autosave <sec>`              | Autosave interval for crash recovery snapshots         |      |             |                |
-| `set lang <name>`                 | Force a syntax (`cpp, python, sh, rb, js, html, css…`) |      |             |                |
-| `alias <from> <to…>`              | Define command aliases                                 |      |             |                |
-| `new` / `bnext` / `bprev` / `lsb` | Multi-buffer workflow                                  |      |             |                |
-| `diff`                            | Show changes vs on-disk                                |      |             |                |
-| `ls [-a] [-l] [path]` / `pwd`     | Directory helpers                                      |      |             |                |
-| `cd <dir>`                        | Change directory (use `~`, `.`, `..`)                  |      |             |                |
-| `clear`                           | Clear screen + scrollback                              |      |             |                |
+| Command                           | Description                                              |      |             |                |
+| --------------------------------- | -------------------------------------------------------- | ---- | ----------- | -------------- |
+| `open <file>`                     | Open a file                                              |      |             |                |
+| `w` / `write`                     | Save                                                     |      |             |                |
+| `wq`                              | Save & quit                                              |      |             |                |
+| `q`                               | Quit (prompts if unsaved)                                |      |             |                |
+| `p [range]` / `r <n>`             | Print lines / show one line                              |      |             |                |
+| `a` / `i <n>`                     | Append / insert before line *n* (`.` alone to finish)    |      |             |                |
+| `d [range]` / `m <from> <to>`     | Delete range / move a line                               |      |             |                |
+| `join [range]`                    | Join lines into one                                      |      |             |                |
+| `find` / `findi` / `findre`       | Search (plain / case-insensitive / regex)                |      |             |                |
+| `n` / `N`                         | Next / previous search hit                               |      |             |                |
+| `repl old new` / `replg …`        | Replace first / replace globally per line                |      |             |                |
+| `undo` / `redo`                   | History navigation                                       |      |             |                |
+| `goto <n>`                        | Jump to line *n*                                         |      |             |                |
+| `read <path> [n]`                 | Insert file after line *n* (default: end)                |      |             |                |
+| `write [range] <path>`            | Write range out to a new path                            |      |             |                |
+| `filter <range> !cmd`             | Pipe range through shell and replace                     |      |             |                |
+| `theme <name>`                    | `default`, `dark`, `neon`, `matrix`, `paper`             |      |             |                |
+| `highlight on/off`                | Toggle syntax highlighting                               |      |             |                |
+| `set number                       | backup                                                   | wrap | truncate …` | Editor toggles |
+| `set autosave <sec>`              | Autosave interval for crash recovery snapshots           |      |             |                |
+| `set lang <name>`                 | Force a syntax (`cpp, python, sh, rb, js, html, css…`)   |      |             |                |
+| `alias <from> <to…>`              | Define command aliases                                   |      |             |                |
+| `new` / `bnext` / `bprev` / `lsb` | Multi-buffer workflow                                    |      |             |                |
+| `diff`                            | Show changes vs on-disk                                  |      |             |                |
+| `ls [-a] [-l] [path]` / `pwd`     | Directory helpers                                        |      |             |                |
+| `cd <dir>`                        | Change directory (use `~`, `.`, `..`)                    |      |             |                |
+| `clear`                           | Clear screen + scrollback                                |      |             |                |
+| `lua <code>`                      | Run inline Lua code                                      |      |             |                |
+| `luafile <path>`                  | Run a Lua script file                                    |      |             |                |
+| `plugins` / `reload-plugins`      | List or reload Lua plugins from `~/tedit-config/plugins` |      |             |                |
 
 ---
 
@@ -227,6 +250,35 @@ alias    wq!     wq
 **Banner** (optional):
 
 * `~/.tedit_banner` (printed at startup)
+
+**Lua plugins** (optional):
+
+* Stored under `~/tedit-config/plugins`.
+* Any `*.lua` file in that directory is auto-loaded on startup.
+* Use `:plugins` to list them, `:reload-plugins` to re-load without restarting.
+
+Example minimal plugin (`~/tedit-config/plugins/hello.lua`):
+
+```lua
+-- Print a greeting when tedit starts
+if tedit_echo then
+  tedit_echo("hello from lua plugin!")
+end
+```
+
+Within Lua you can also:
+
+```lua
+-- run an editor command
+if tedit_command then
+  tedit_command("set number on")
+end
+
+-- print a specific line (1-based)
+if tedit_print then
+  tedit_print(1)
+end
+```
 
 ---
 
@@ -261,7 +313,7 @@ tedit> wq
 
 ## Philosophy
 
-`tedit` follows the Unix idea of **doing one thing well**: editing text with predictable, script-friendly commands—while still giving you modern comforts like highlighting, undo, themes, and safer saves.
+`tedit` follows the Unix idea of **doing one thing well**: editing text with predictable, script-friendly commands—while still giving you modern comforts like highlighting, undo, themes, Lua scripting, and safer saves.
 
 ---
 

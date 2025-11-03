@@ -1,5 +1,4 @@
 #!/usr/bin/env sh
-# tedit installer (POSIX sh) — cinematic bar + spinner, no prompt glitches
 
 set -eu
 
@@ -42,7 +41,7 @@ term_width(){ w=80; if command -v tput >/dev/null 2>&1; then w=$(tput cols 2>/de
 [ -f "tedit.cpp" ] || die "Please run this from the ${APP_NAME} source directory."
 
 if is_utf; then FIL="█"; EMP="░"; else FIL="#"; EMP="-"; fi
-TOTAL=12 STEP=0
+TOTAL=11 STEP=0
 
 draw_bar(){
   n=$1; tot=$2; msg=$3
@@ -73,7 +72,7 @@ spinner(){
   printf "\r\033[K"
 }
 
-# Pre-auth in FOREGROUND (clean line; no spinner), so prompts don’t glitch.
+# Pre-auth in FOREGROUND (clean line; no spinner), so prompts don’t glitch. (these bugs pmo)
 auth_once(){
   [ -z "$SUDO" ] && return 0
   printf "\r\033[K%s%sElevating privileges (may prompt once)...%s\n" "$CYAN" "$BOLD" "$RESET"
@@ -119,6 +118,7 @@ case "${ID:-}" in
   gentoo) PKG="emerge" ;;
   void) PKG="xbps-install" ;;
   solus) PKG="eopkg" ;;
+  *) : ;;
 esac
 [ -z "$PKG" ] && { have apk && PKG="apk" || :; }
 [ -z "$PKG" ] && { have apt && PKG="apt" || :; }
@@ -131,60 +131,125 @@ esac
 [ -z "$PKG" ] && { have emerge && PKG="emerge" || :; }
 [ -z "$PKG" ] && { have brew && [ "$(uname -s)" = "Darwin" ] && PKG="brew" || :; }
 
+# --- Lua detection helpers ---
+lua_dev_ok(){
+  if have pkg-config; then
+    if pkg-config --exists lua5.4 2>/dev/null || \
+       pkg-config --exists lua5.3 2>/dev/null || \
+       pkg-config --exists lua 2>/dev/null; then
+      return 0
+    fi
+  fi
+  for base in /usr /usr/local; do
+    if [ -f "$base/include/lua.h" ] || \
+       [ -f "$base/include/lua5.4/lua.h" ] || \
+       [ -f "$base/include/lua5.3/lua.h" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+lua_version_note(){
+  if ! lua_dev_ok; then
+    return 1
+  fi
+  if have pkg-config; then
+    for name in lua5.4 lua5.3 lua; do
+      if pkg-config --exists "$name" 2>/dev/null; then
+        ver=$(pkg-config --modversion "$name" 2>/dev/null || echo "")
+        if [ -n "$ver" ]; then
+          printf "%sLua dev detected:%s %s (%s)\n" "$GREEN" "$RESET" "$name" "$ver" | tee -a "$LOG" >/dev/null
+          return 0
+        fi
+      fi
+    done
+  fi
+  if have lua; then
+    ver=$(lua -e 'print(_VERSION)' 2>/dev/null || :)
+    if [ -n "$ver" ]; then
+      printf "%sLua runtime detected:%s %s\n" "$GREEN" "$RESET" "$ver" | tee -a "$LOG" >/dev/null
+    fi
+  fi
+}
+
 need_deps(){
   need=0
   have make || need=1
-  if have c++; then :; elif have g++; then :; elif have clang++; then :; else need=1; fi
+  if have c++; then :
+  elif have g++; then :
+  elif have clang++; then :
+  else need=1
+  fi
+  if ! have pkg-config; then
+    need=1
+  fi
+  if ! lua_dev_ok; then
+    need=1
+  fi
   return $need
 }
 
 install_deps(){
   # Gentoo heads-up (colored)
   if [ "${ID:-}" = "gentoo" ] || [ "$PKG" = "emerge" ]; then
-    printf "%sGentoo detected — emerging toolchain (may be interactive).%s\n" "$YELLOW" "$RESET" | tee -a "$LOG" >/dev/null
+    printf "%sGentoo detected — emerging toolchain and Lua (may be interactive).%s\n" "$YELLOW" "$RESET" | tee -a "$LOG" >/dev/null
   fi
   case "$PKG" in
     apk)
       run_root "Installing build-base..." "apk add --no-cache --update-cache build-base"
+      run_root "Installing pkgconf..." "apk add --no-cache --update-cache pkgconf || true"
+      run_root "Installing Lua dev..." "apk add --no-cache --update-cache lua-dev || apk add --no-cache --update-cache lua5.4-dev || true"
       ;;
     apt)
       run_root "Updating APT index..."     "sh -c 'apt-get update -y || apt update -y'"
-      run_root "Installing build tools..." "sh -c 'apt-get install -y build-essential make || apt install -y build-essential make'"
+      run_root "Installing build tools..." "sh -c 'apt-get install -y build-essential make pkg-config || apt install -y build-essential make pkg-config'"
+      run_root "Installing Lua dev..."     "sh -c 'apt-get install -y lua5.4 liblua5.4-dev || apt-get install -y lua5.3 liblua5.3-dev || apt-get install -y lua5.2 liblua5.2-dev || apt install -y lua5.4 liblua5.4-dev || apt install -y lua5.3 liblua5.3-dev || apt install -y lua5.2 liblua5.2-dev || true'"
       ;;
     dnf|yum)
-      run_root "Installing dev tools..."   "$PKG install -y make gcc gcc-c++"
+      run_root "Installing dev tools..."   "$PKG install -y make gcc gcc-c++ pkg-config lua lua-devel || true"
       ;;
     pacman)
       run_root "Syncing pacman..."         "pacman -Sy --noconfirm"
-      run_root "Installing gcc & make..."  "pacman -S --needed --noconfirm gcc make"
+      run_root "Installing gcc & make..."  "pacman -S --needed --noconfirm gcc make pkgconf lua || true"
       ;;
     zypper)
-      run_root "Installing C/C++ tools..." "zypper -n install make gcc-c++"
+      run_root "Installing C/C++ tools..." "zypper -n install make gcc-c++ pkg-config"
+      run_root "Installing Lua dev..."     "zypper -n install lua lua-devel || true"
       ;;
     xbps-install)
-      run_root "Installing gcc & make..."  "xbps-install -Sy gcc make"
+      run_root "Installing gcc & make..."  "xbps-install -Sy gcc make pkg-config lua-devel || true"
       ;;
     eopkg)
       run_root "Installing system.devel..." "sh -c 'eopkg -y it -c system.devel || eopkg -y it make gcc binutils'"
+      run_root "Installing Lua dev..."      "sh -c 'eopkg -y it lua-devel || eopkg -y it lua || true'"
       ;;
     emerge)
       run_root "Emerging gcc & make..."    "emerge --quiet-build=y --oneshot sys-devel/gcc sys-devel/make || true"
+      run_root "Emerging Lua & pkgconfig..." "emerge --quiet-build=y --oneshot dev-lang/lua dev-util/pkgconfig || true"
       ;;
     brew)
       spinner "Installing make..." "brew install make || true"
+      spinner "Installing pkg-config & Lua..." "brew install pkg-config lua || true"
       if ! have clang++; then
         printf "%sXcode Command Line Tools may be required.%s\n" "$YELLOW" "$RESET" | tee -a "$LOG" >/dev/null
         spinner "Invoking xcode-select..." "xcode-select --install || true"
       fi
       ;;
     *)
-      die "Unsupported/undetected package manager. Install make + a C++17 compiler, then re-run."
+      die "Unsupported/undetected package manager. Install make, a C++17 compiler, pkg-config, and Lua dev manually, then re-run."
       ;;
   esac
 
   # verify post-install
   have make || die "make still missing after install."
-  if have c++; then :; elif have g++; then :; elif have clang++; then :; else die "No C++17 compiler after install."; fi
+  if have c++; then :
+  elif have g++; then :
+  elif have clang++; then :
+  else die "No C++17 compiler after install."
+  fi
+  have pkg-config || die "pkg-config still missing after install."
+  lua_dev_ok || die "Lua development headers/libs still missing after install. Please install the Lua 5.3/5.4 dev package for your distro and re-run."
 }
 
 choose_cxx(){
@@ -207,8 +272,9 @@ draw_bar "$STEP" "$TOTAL" "Preparing privileges"
 next "Detecting package manager"
 [ -n "$PKG" ] || die "No supported package manager detected."
 
-next "Checking build dependencies"
+next "Checking build + Lua deps"
 if need_deps; then install_deps; fi
+lua_version_note || :
 
 next "Selecting compiler"
 CXX_BIN="$(choose_cxx)"; printf "Using %s\n" "$CXX_BIN" >>"$LOG"

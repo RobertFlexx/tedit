@@ -1,10 +1,9 @@
 #!/usr/bin/env sh
-# tedit uninstaller — POSIX sh, single pretty progress bar, no hangs
 
-set -u
+set -eu
 
 APP_NAME="tedit"
-LOG="/tmp/${APP_NAME}-uninstall.$$".log
+LOG="$(mktemp -t ${APP_NAME}-uninstall.XXXXXX.log)"
 
 PURGE_REPO=0
 PURGE_USER=0
@@ -21,7 +20,7 @@ while [ $# -gt 0 ]; do
       cat <<EOF
 Usage: $0 [options]
   --purge-repo        Remove this git repository after uninstall (asks unless -y)
-  --purge-user-data   Remove ~/.teditrc, ~/.tedit_banner, ~/.tedit/hooks, ~/.tedit-recover-*
+  --purge-user-data   Remove ~/.teditrc, ~/.tedit_banner, ~/.tedit/hooks, ~/.tedit-recover-*, ~/tedit-config
   --purge             Do both --purge-repo and --purge-user-data
   -y, --yes           Non-interactive (assume yes)
 EOF
@@ -34,7 +33,8 @@ done
 
 # ---------- Colors ----------
 if [ -t 1 ] && command -v tput >/dev/null 2>&1; then
-  GREEN="$(tput setaf 2)"; YELLOW="$(tput setaf 3)"; RED="$(tput setaf 1)"; CYAN="$(tput setaf 6)"; BOLD="$(tput bold)"; RESET="$(tput sgr0)"
+  GREEN="$(tput setaf 2)"; YELLOW="$(tput setaf 3)"; RED="$(tput setaf 1)"
+  CYAN="$(tput setaf 6)"; BOLD="$(tput bold)"; RESET="$(tput sgr0)"
 else
   GREEN=""; YELLOW=""; RED=""; CYAN=""; BOLD=""; RESET=""
 fi
@@ -56,22 +56,22 @@ SCRIPT_DIR=$(
 # ---------- Privileges ----------
 SUDO=""
 if [ "$(id -u)" -ne 0 ]; then
-  if have doas; then SUDO="doas"
-  elif have sudo; then SUDO="sudo"
+  # Prefer sudo, but fall back to doas (matches installer)
+  if have sudo; then
+    SUDO="sudo"
+  elif have doas; then
+    SUDO="doas"
   fi
 fi
 
+printf "%s%s>> Uninstalling %s <<%s\n" "$CYAN" "$BOLD" "$APP_NAME" "$RESET" | tee -a "$LOG" >/dev/null
+
 # authenticate once; later, we use -n to avoid mid-bar prompts
 if [ -n "$SUDO" ]; then
-  printf "%s" "$CYAN$BOLD"
-  printf "Uninstalling %s... (authenticating) " "$APP_NAME"
-  printf "%s" "$RESET"
+  printf "%sAuthenticating (may prompt once)...%s\n" "$CYAN" "$RESET"
   $SUDO -v 2>/dev/null || $SUDO true || :
-  printf "\n"
 else
-  printf "%s" "$CYAN$BOLD"
-  printf "Uninstalling %s..." "$APP_NAME"
-  printf "%s\n" "$RESET"
+  printf "%s(no sudo/doas: user-level uninstall where possible)%s\n" "$YELLOW" "$RESET"
 fi
 
 SUDO_NONINT=""
@@ -81,8 +81,19 @@ if [ -n "$SUDO" ]; then SUDO_NONINT="$SUDO -n"; fi
 is_utf() { echo "${LC_ALL:-${LANG:-}}" | grep -qi 'utf-8'; }
 if is_utf; then FIL="█"; EMP="░"; else FIL="#"; EMP="-"; fi
 
-repeat() { n=$1; ch=$2; i=0; out=""; while [ "$i" -lt "$n" ]; do out="$out$ch"; i=$((i+1)); done; printf "%s" "$out"; }
-term_width() { w=80; if command -v tput >/dev/null 2>&1; then w=$(tput cols 2>/dev/null || echo 80); fi; [ "$w" -gt 20 ] || w=80; echo "$w"; }
+repeat() {
+  n=$1; ch=$2; i=0; out=""
+  while [ "$i" -lt "$n" ]; do out="$out$ch"; i=$((i+1)); done
+  printf "%s" "$out"
+}
+term_width() {
+  w=80
+  if command -v tput >/dev/null 2>&1; then
+    w=$(tput cols 2>/dev/null || echo 80)
+  fi
+  [ "$w" -gt 20 ] || w=80
+  echo "$w"
+}
 
 draw_bar() {
   n=$1 tot=$2 msg=$3
@@ -94,7 +105,6 @@ draw_bar() {
   empty=$(( bw - fill ))
   bar="$(repeat "$fill" "$FIL")$(repeat "$empty" "$EMP")"
   line="$(printf "%s%s[%s]%s %d/%d (%d%%) %s" "$CYAN" "$BOLD" "$bar" "$RESET" "$n" "$tot" "$pct" "$msg")"
-  # clear the whole line to kill leftovers, then print
   printf "\r\033[K%s" "$line"
   log "$(printf '[%s] %d/%d (%d%%) %s' "$(repeat "$fill" "#")$(repeat "$empty" "-")" "$n" "$tot" "$pct" "$msg")"
 }
@@ -142,7 +152,9 @@ remove_named_everywhere() {
     [ -f "$D/$NAME" ] && rm_file "$D/$NAME"
   done
   OLDIFS=$IFS; IFS=:
-  for D in $PATH; do [ -n "$D" ] && [ -f "$D/$NAME" ] && rm_file "$D/$NAME"; done
+  for D in $PATH; do
+    [ -n "$D" ] && [ -f "$D/$NAME" ] && rm_file "$D/$NAME"
+  done
   IFS=$OLDIFS
   RES="$(command -v "$NAME" 2>/dev/null || true)"
   [ -n "$RES" ] && [ -f "$RES" ] && rm_file "$RES"
@@ -151,11 +163,15 @@ remove_named_everywhere() {
 
 remove_manpages_for() {
   NAME="$1"
-  for MP in "/usr/local/share/man/man1/${NAME}.1" "/usr/share/man/man1/${NAME}.1" "$HOME/.local/share/man/man1/${NAME}.1"; do
+  for MP in \
+    "/usr/local/share/man/man1/${NAME}.1" \
+    "/usr/share/man/man1/${NAME}.1" \
+    "$HOME/.local/share/man/man1/${NAME}.1"
+  do
     rm_file "$MP"; rm_file "${MP}.gz"; rm_file "${MP}.bz2"; rm_file "${MP}.xz"
   done
 }
-
+# hi :P
 clean_profile_file() {
   PROF="$1"; [ -f "$PROF" ] || return 0
   TMP="${PROF}.tmp.$$"
@@ -176,31 +192,41 @@ confirm() {
 }
 
 # ---------- Plan steps ----------
-# Order: 1..6 ops, optional 7 (user purge), 8 post-check, optional 9 (repo purge & exit)
-TOTAL=7  # base ops(6) + post-check
+# Base ops: 6, plus post-check = 7
+TOTAL=7
 [ "$PURGE_USER" -eq 1 ] && TOTAL=$((TOTAL+1))
 [ "$PURGE_REPO" -eq 1 ] && TOTAL=$((TOTAL+1))
 
 STEP=0
 next() { STEP=$((STEP+1)); draw_bar "$STEP" "$TOTAL" "$1"; }
 
-# 1) remove binary
-remove_named_everywhere "$APP_NAME";           next "Remove installed binary"
+# ---------- 1) remove binary ----------
+remove_named_everywhere "$APP_NAME"
+next "Remove installed binary"
 
-# 2) wrappers
-for W in tedit-install tedit-update tedit-uninstall; do remove_named_everywhere "$W"; done
-next "Remove wrappers"
+# ---------- 2) wrappers + repo markers ----------
+for W in tedit-install tedit-update tedit-uninstall; do
+  remove_named_everywhere "$W"
+done
+# remove repo marker directories created by init/update
+rm_dir "/usr/local/share/tedit"
+rm_dir "$HOME/.local/share/tedit"
+next "Remove wrappers & markers"
 
-# 3) man pages
-remove_manpages_for "$APP_NAME";               next "Remove man pages"
+# ---------- 3) man pages ----------
+remove_manpages_for "$APP_NAME"
+next "Remove man pages"
 
-# 4) PATH profile lines
-for PROF in "$HOME/.zprofile" "$HOME/.bash_profile" "$HOME/.profile"; do clean_profile_file "$PROF"; done
+# ---------- 4) PATH profile lines ----------
+for PROF in "$HOME/.zprofile" "$HOME/.bash_profile" "$HOME/.profile"; do
+  clean_profile_file "$PROF"
+done
 next "Clean PATH lines"
 
-# 5) repo build droppings (but not the repo dir itself)
+# ---------- 5) repo build droppings (but not the repo dir itself) ----------
 if [ -d "$SCRIPT_DIR" ]; then
-  ( cd "$SCRIPT_DIR" 2>/dev/null || :
+  (
+    cd "$SCRIPT_DIR" 2>/dev/null || exit 0
     if [ -f Makefile ] && have make; then make clean >/dev/null 2>&1 || :; fi
     rm_file "./${APP_NAME}"
     rm -f ./*.o ./*.obj ./*.d ./*.a ./*.so ./*.dSYM 2>/dev/null || :
@@ -210,7 +236,7 @@ if [ -d "$SCRIPT_DIR" ]; then
 fi
 next "Remove local build artifacts"
 
-# 6) refresh man db (non-interactive; skip if creds expired)
+# ---------- 6) refresh man db (best-effort, non-interactive) ----------
 if have mandb; then
   if [ -n "$SUDO" ]; then $SUDO -n mandb -q 2>/dev/null || :; else mandb -q 2>/dev/null || :; fi
 elif have makewhatis; then
@@ -218,18 +244,31 @@ elif have makewhatis; then
 fi
 next "Refresh man database"
 
-# 7) optional: user data
+# ---------- 7) optional: user data purge ----------
 if [ "$PURGE_USER" -eq 1 ]; then
+  # Legacy + current config/metadata
   rm -f "$HOME/.teditrc" "$HOME/.tedit_banner" 2>/dev/null || :
+  rm -rf "$HOME/.tedit" 2>/dev/null || :
+  rm -rf "$HOME/tedit-config" 2>/dev/null || :
   rm -rf "$HOME/.tedit/hooks" 2>/dev/null || :
-  for F in "$HOME"/.tedit-recover-*; do [ -e "$F" ] && rm -f -- "$F" 2>/dev/null || :; done
+  for F in "$HOME"/.tedit-recover-*; do
+    [ -e "$F" ] && rm -f -- "$F" 2>/dev/null || :
+  done
   next "Purge user data"
 fi
 
-# 8) post-check BEFORE repo deletion
+# ---------- 8) post-check BEFORE repo deletion ----------
 LEFT_BIN="$(command -v "$APP_NAME" 2>/dev/null || true)"
-LEFT_WRAP=""; for W in tedit-install tedit-update tedit-uninstall; do command -v "$W" >/dev/null 2>&1 && LEFT_WRAP="$LEFT_WRAP $W"; done
-LEFT_MAN=""; command -v man >/dev/null 2>&1 && LEFT_MAN="$(man -w "$APP_NAME" 2>/dev/null || true)"
+LEFT_WRAP=""
+for W in tedit-install tedit-update tedit-uninstall; do
+  if command -v "$W" >/dev/null 2>&1; then
+    LEFT_WRAP="$LEFT_WRAP $W"
+  fi
+done
+LEFT_MAN=""
+if command -v man >/dev/null 2>&1; then
+  LEFT_MAN="$(man -w "$APP_NAME" 2>/dev/null || true)"
+fi
 
 if [ -z "$LEFT_BIN$LEFT_WRAP$LEFT_MAN" ]; then
   next "Post-check for leftovers"
@@ -241,15 +280,18 @@ else
   [ -n "$LEFT_MAN" ]  && printf "  - manpage: %s\n" "$LEFT_MAN"
   printf "You can remove the above paths manually, then run: hash -r\n"
   printf "%s" "$CURSOR_SHOW"
+  printf "Log: %s\n" "$LOG"
   exit 1
 fi
 
-# 9) optional: purge repo dir LAST, from parent, then exit immediately
+# ---------- 9) optional: purge repo dir LAST ----------
 if [ "$PURGE_REPO" -eq 1 ]; then
   if [ -d "$SCRIPT_DIR/.git" ] && [ -f "$SCRIPT_DIR/tedit.cpp" ]; then
-    PARENT="$(dirname "$SCRIPT_DIR")"; BASE="$(basename "$SCRIPT_DIR")"
+    PARENT="$(dirname "$SCRIPT_DIR")"
+    BASE="$(basename "$SCRIPT_DIR")"
     if [ "$ASSUME_YES" -eq 1 ] || confirm "Remove repository directory '$SCRIPT_DIR' (cannot be undone)"; then
-      ( cd "$PARENT" 2>/dev/null || exit 0
+      (
+        cd "$PARENT" 2>/dev/null || exit 0
         rm_dir "$BASE"
       )
     fi

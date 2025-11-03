@@ -6,6 +6,13 @@ CXXFLAGS ?= -O2 -g -Wall -Wextra -Wpedantic -std=c++17 \
 LDFLAGS  ?=
 LDLIBS   ?=
 
+# Lua 5.4 (headers in /usr/include/lua5.4, library liblua5.4.so) (some distros may be finicky. qio0wfjqwjf)
+LUA_CFLAGS ?= -I/usr/include/lua5.4
+LUA_LIBS   ?= -llua5.4 -ldl -lm
+
+CXXFLAGS += $(LUA_CFLAGS)
+LDLIBS   += $(LUA_LIBS)
+
 TARGET   := tedit
 SRC      := tedit.cpp
 OBJ      := $(SRC:.cpp=.o)

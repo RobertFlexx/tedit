@@ -1,5 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
-#define TEDIT_VERSION "1.0.2"
+#define TEDIT_VERSION "2.0.0"
 #include <algorithm>
 #include <cerrno>
 #include <cctype>
@@ -29,8 +29,21 @@
 #include <ctime>
 #include <vector>
 
+extern "C" {
+    #include <lua.h>
+    #include <lauxlib.h>
+    #include <lualib.h>
+}
+
 namespace fs = std::filesystem;
 using std::string; using std::vector; using std::cout; using std::cerr; using std::endl;
+
+struct Editor;
+static Editor* g_editor = nullptr;
+
+static int l_tedit_echo(lua_State* L);
+static int l_tedit_command(lua_State* L);
+static int l_tedit_print(lua_State* L);
 
 /* ------------------------------------------------------------------ */
 /*               SECURE HELPERS (NEW / HARDENED)                      */
@@ -101,13 +114,29 @@ static bool safe_backup_copy(const string &src, const string &dst, string &err) 
 }
 
 static inline string home_path(){
-    const char* h=getenv("HOME");
-    return h? string(h): string(".");
+    const char* h = getenv("HOME");
+    if(!h) h = getenv("USERPROFILE");
+    if(!h) return string(".");
+    return string(h);
 }
 
 static inline bool file_exists(const string& p){
     struct stat st{};
     return ::stat(p.c_str(),&st)==0;
+}
+
+static string tedit_config_dir(){
+    string base = home_path();
+    string root = base + "/tedit-config";
+    std::error_code ec;
+    fs::create_directories(root, ec);
+    string plugins = root + "/plugins";
+    fs::create_directories(plugins, ec);
+    return root;
+}
+
+static string tedit_plugins_dir(){
+    return tedit_config_dir() + "/plugins";
 }
 
 /* ------------------------------------------------------------------ */
@@ -993,18 +1022,28 @@ struct Editor{
 
     Lang lang = Lang::Plain;
 
+    lua_State* L = nullptr;
+    vector<string> plugin_names;
+
     Editor(){
+        g_editor = this;
         lr.commands = {
             "help","open","info","write","w","wq","saveas","quit","q","print","p","r",
             "append","a","insert","i","delete","d","move","m","join","find","findi","findre",
             "repl","replg","read","undo","u","redo","set","filter","ls","pwd","number",
             "goto","n","N","new","bnext","bprev","lsb","theme","highlight","alias","diff",
-            "cd","clear","version"
+            "cd","clear","version","lua","luafile","plugins","reload-plugins"
         };
         lr.set_theme_colors(P);
+        init_lua();
     }
 
-    string cfg_path() const { return home_path() + "/.teditrc"; }
+    ~Editor(){
+        close_lua();
+    }
+
+    string cfg_path() const { return tedit_config_dir() + "/.teditrc"; }
+
     static string theme_name(Theme t){
         switch(t){ case Theme::Dark: return "dark"; case Theme::Neon: return "neon"; case Theme::Matrix: return "matrix"; case Theme::Paper: return "paper"; default: return "default"; }
     }
@@ -1024,6 +1063,57 @@ struct Editor{
     }
     static string esc(const string& in){ string r; r.reserve(in.size()); for(char ch: in){ if(ch=='\\' || ch=='\t') r.push_back('\\'); r.push_back(ch); } return r; }
     static string unesc(const string& in){ string r; r.reserve(in.size()); bool e=false; for(char ch: in){ if(e){ r.push_back(ch); e=false; } else if(ch=='\\') e=true; else r.push_back(ch); } return r; }
+
+    void init_lua(){
+        if(L) return;
+        L = luaL_newstate();
+        if(!L) return;
+        luaL_openlibs(L);
+        lua_register(L, "tedit_command", l_tedit_command);
+        lua_register(L, "tedit_echo", l_tedit_echo);
+        lua_register(L, "tedit_print", l_tedit_print);
+        load_lua_plugins();
+    }
+
+    void close_lua(){
+        if(L){
+            lua_close(L);
+            L = nullptr;
+        }
+    }
+
+    void load_lua_plugins(){
+        plugin_names.clear();
+        if(!L) return;
+        string dir = tedit_plugins_dir();
+        std::error_code ec;
+        if(!fs::exists(dir, ec) || !fs::is_directory(dir, ec)) return;
+        fs::directory_iterator it(dir, fs::directory_options::skip_permission_denied, ec), end;
+        for(; !ec && it!=end; it.increment(ec)){
+            const auto& entry = *it;
+            if(!entry.is_regular_file()) continue;
+            fs::path p = entry.path();
+            if(p.extension() != ".lua") continue;
+            string fpath = p.string();
+            int rc = luaL_loadfile(L, fpath.c_str());
+            if(rc != LUA_OK){
+                const char* msg = lua_tostring(L, -1);
+                cout<<P.err<<"lua plugin error ("<<fpath<<"): "<<(msg?msg:"")<<C_RESET<<"\n";
+                lua_pop(L, 1);
+                continue;
+            }
+            rc = lua_pcall(L, 0, 0, 0);
+            if(rc != LUA_OK){
+                const char* msg = lua_tostring(L, -1);
+                cout<<P.err<<"lua plugin error ("<<fpath<<"): "<<(msg?msg:"")<<C_RESET<<"\n";
+                lua_pop(L, 1);
+                continue;
+            }
+            string name = p.stem().string();
+            plugin_names.push_back(name);
+            cout<<P.ok<<"loaded "<<name<<C_RESET<<"\n";
+        }
+    }
 
     void save_config(){
         std::ofstream out(cfg_path(), std::ios::binary|std::ios::trunc);
@@ -1164,6 +1254,10 @@ struct Editor{
         CMD("cd <dir>",               "", "change directory (./ ../ ~/)");
         CMD("clear",                  "", "clear screen and scrollback");
         CMD("version",                "", "show tedit version");
+        CMD("lua <code>",             "", "run Lua code");
+        CMD("luafile <path>",         "", "run Lua script file");
+        CMD("plugins",                "", "list loaded Lua plugins");
+        CMD("reload-plugins",         "", "reload Lua plugins from tedit-config/plugins");
         cout<<P.dim<<"Tab: first word => commands only; after 'cd ' => directories only."<<C_RESET<<"\n";
     }
 
@@ -1174,7 +1268,6 @@ struct Editor{
         (void)maybe_recover(buf);
     }
 
-    /* hardened hook runner */
     bool run_hook(const char* name){
         string h = home_path()+"/.tedit/hooks/";
         h += name;
@@ -1192,7 +1285,6 @@ struct Editor{
         string err;
         bool ok = atomic_save(target, buf, buf.backup, err);
         if(!ok){
-            /* atomic_save already tried doas if rename failed; we just report */
             cout<<P.err<<"save: "<<err<<C_RESET<<"\n";
             return false;
         }
@@ -1361,8 +1453,6 @@ struct Editor{
         lang = detect_lang(buf.path);
         cout<<"[bprev] "<<(buf.path.empty()? "(unnamed)":buf.path)<<"\n";
     }
-    /* for future maintainers: im sorry for obfuscation */
-    /* hardened diff: escape paths */
     void show_diff(){
         if(buf.path.empty() || !file_exists(buf.path)){ cout<<"diff: no on-disk version\n"; return; }
         char tpat[]="/tmp/tedit_diff_XXXXXX";
@@ -1618,63 +1708,164 @@ struct Editor{
         if(lc=="alias"){
             std::istringstream ts(rest); string from; ts>>from; string to; std::getline(ts,to); to=trim_copy(to);
             if(from.empty()||to.empty()){ cout<<P.warn<<"usage: alias <from> <to...>"<<C_RESET<<"\n"; return true; }
-            aliases[from]=to; cout<<"alias: "<<from<<" -> "<<to<<"\n"; save_config(); return true;
-        }
+            aliases[from]=to; cout<<"alias: "<<from<<" -> "<<to<<"\n"; save_config(); return true; }
+            if(lc=="new"){ string p=rest; open_new_buffer(p); return true; }
+            if(lc=="bnext"){ bnext(); return true; }
+            if(lc=="bprev"){ bprev(); return true; }
+            if(lc=="lsb"){ list_buffers(); return true; }
 
-        if(lc=="new"){ string p=rest; open_new_buffer(p); return true; }
-        if(lc=="bnext"){ bnext(); return true; }
-        if(lc=="bprev"){ bprev(); return true; }
-        if(lc=="lsb"){ list_buffers(); return true; }
+            if(lc=="diff"){ show_diff(); return true; }
 
-        if(lc=="diff"){ show_diff(); return true; }
-
-        if(lc=="pwd"){ std::error_code ec; auto p = fs::current_path(ec); if(ec) cout<<P.err<<"pwd: "<<ec.message()<<C_RESET<<"\n"; else cout<<p.string()<<"\n"; return true; }
-        if(lc=="ls"){
-            bool all=false,longfmt=false; string target=".";
-            std::istringstream ts2(rest); string t; vector<string> args;
-            while(ts2>>t) args.push_back(t);
-            for(size_t i=0;i<args.size();++i){
-                if(args[i]=="-a") all=true;
-                else if(args[i]=="-l") longfmt=true;
-                else target=args[i];
-            }
-            if(target.empty()) target=".";
-            ls_list(target, all, longfmt);
-            return true;
-        }
-
-        if(lc=="cd"){
-            if(rest.empty()){
-                cout<<P.warn<<"cd: requires a directory path (try ., .., ~, or a folder name)"<<C_RESET<<"\n";
+            if(lc=="pwd"){ std::error_code ec; auto p = fs::current_path(ec); if(ec) cout<<P.err<<"pwd: "<<ec.message()<<C_RESET<<"\n"; else cout<<p.string()<<"\n"; return true; }
+            if(lc=="ls"){
+                bool all=false,longfmt=false; string target=".";
+                std::istringstream ts2(rest); string t; vector<string> args;
+                while(ts2>>t) args.push_back(t);
+                for(size_t i=0;i<args.size();++i){
+                    if(args[i]=="-a") all=true;
+                    else if(args[i]=="-l") longfmt=true;
+                    else target=args[i];
+                }
+                if(target.empty()) target=".";
+                ls_list(target, all, longfmt);
                 return true;
             }
-            string target = expand_path(rest);
-            std::error_code ec;
-            fs::file_status st = fs::status(target, ec);
-            if(ec || !fs::exists(st)){
-                cout<<P.err<<"cd: no such directory: "<<target<<C_RESET<<"\n";
+
+            if(lc=="cd"){
+                if(rest.empty()){
+                    cout<<P.warn<<"cd: requires a directory path (try ., .., ~, or a folder name)"<<C_RESET<<"\n";
+                    return true;
+                }
+                string target = expand_path(rest);
+                std::error_code ec;
+                fs::file_status st = fs::status(target, ec);
+                if(ec || !fs::exists(st)){
+                    cout<<P.err<<"cd: no such directory: "<<target<<C_RESET<<"\n";
+                    return true;
+                }
+                if(!fs::is_directory(st)){
+                    cout<<P.err<<"cd: not a directory: "<<target<<C_RESET<<"\n";
+                    return true;
+                }
+                fs::current_path(target, ec);
+                if(ec) cout<<P.err<<"cd: "<<ec.message()<<C_RESET<<"\n";
+                else cout<<P.ok<<"cd: "<<fs::current_path().string()<<C_RESET<<"\n";
                 return true;
             }
-            if(!fs::is_directory(st)){
-                cout<<P.err<<"cd: not a directory: "<<target<<C_RESET<<"\n";
+// whats up
+            if(lc=="clear"){ clear_screen(); return true; }
+
+            if(lc=="lua"){
+                if(!L){
+                    cout<<P.err<<"lua: not available"<<C_RESET<<"\n";
+                    return true;
+                }
+                if(rest.empty()){
+                    cout<<P.warn<<"usage: lua <code>"<<C_RESET<<"\n";
+                    return true;
+                }
+                int rc = luaL_loadstring(L, rest.c_str());
+                if(rc != LUA_OK){
+                    const char* msg = lua_tostring(L, -1);
+                    cout<<P.err<<"lua: "<<(msg?msg:"")<<C_RESET<<"\n";
+                    lua_pop(L, 1);
+                    return true;
+                }
+                rc = lua_pcall(L, 0, LUA_MULTRET, 0);
+                if(rc != LUA_OK){
+                    const char* msg = lua_tostring(L, -1);
+                    cout<<P.err<<"lua: "<<(msg?msg:"")<<C_RESET<<"\n";
+                    lua_pop(L, 1);
+                }
                 return true;
             }
-            fs::current_path(target, ec);
-            if(ec) cout<<P.err<<"cd: "<<ec.message()<<C_RESET<<"\n";
-            else cout<<P.ok<<"cd: "<<fs::current_path().string()<<C_RESET<<"\n";
-            return true;
-        }
 
-        if(lc=="clear"){ clear_screen(); return true; }
+            if(lc=="luafile"){
+                if(!L){
+                    cout<<P.err<<"luafile: lua not available"<<C_RESET<<"\n";
+                    return true;
+                }
+                if(rest.empty()){
+                    cout<<P.warn<<"usage: luafile <path>"<<C_RESET<<"\n";
+                    return true;
+                }
+                string p = expand_path(rest);
+                int rc = luaL_loadfile(L, p.c_str());
+                if(rc != LUA_OK){
+                    const char* msg = lua_tostring(L, -1);
+                    cout<<P.err<<"luafile: "<<(msg?msg:"")<<C_RESET<<"\n";
+                    lua_pop(L, 1);
+                    return true;
+                }
+                rc = lua_pcall(L, 0, 0, 0);
+                if(rc != LUA_OK){
+                    const char* msg = lua_tostring(L, -1);
+                    cout<<P.err<<"luafile: "<<(msg?msg:"")<<C_RESET<<"\n";
+                    lua_pop(L, 1);
+                }
+                return true;
+            }
 
-        if(lc=="version" || lc=="ver"){
-            cout<<P.title<<"tedit "<<TEDIT_VERSION<<C_RESET<<"\n";
-            return true;
-        }
+            if(lc=="plugins"){
+                if(plugin_names.empty()){
+                    cout<<"no plugins loaded\n";
+                } else {
+                    for(const auto& n : plugin_names) cout<<"- "<<n<<"\n";
+                }
+                return true;
+            }
 
-        cout<<P.warn<<"unknown command — type 'help'"<<C_RESET<<"\n"; return true;
+            if(lc=="reload-plugins"){
+                if(!L){
+                    cout<<P.err<<"reload-plugins: lua not available"<<C_RESET<<"\n";
+                    return true;
+                }
+                load_lua_plugins();
+                cout<<"plugins reloaded\n";
+                return true;
+            }
+
+            if(lc=="version" || lc=="ver"){
+                cout<<P.title<<"tedit "<<TEDIT_VERSION<<C_RESET<<"\n";
+                return true;
+            }
+
+            cout<<P.warn<<"unknown command — type 'help'"<<C_RESET<<"\n"; return true;
     }
 };
+
+/* ------------------------------------------------------------------ */
+/*                      Lua bridge functions                          */
+/* ------------------------------------------------------------------ */
+
+static int l_tedit_echo(lua_State* L){
+    const char* s = luaL_checkstring(L, 1);
+    if(g_editor){
+        cout<<g_editor->P.accent;
+        if(s) cout<<s;
+        cout<<C_RESET<<"\n";
+    }
+    return 0;
+}
+
+static int l_tedit_command(lua_State* L){
+    const char* s = luaL_checkstring(L, 1);
+    if(g_editor && s){
+        string cmd = s;
+        if(!cmd.empty()) g_editor->handle(cmd);
+    }
+    return 0;
+}
+
+static int l_tedit_print(lua_State* L){
+    lua_Integer ln = luaL_checkinteger(L, 1);
+    if(g_editor){
+        if(ln >= 1 && (size_t)ln <= g_editor->buf.lines.size()){
+            g_editor->print((size_t)ln, (size_t)ln);
+        }
+    }
+    return 0;
+}
 
 /* ------------------------------------------------------------------ */
 /*                               main                                 */
