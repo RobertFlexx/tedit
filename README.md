@@ -48,6 +48,8 @@
   * `:lua <code>` runs inline Lua; `:luafile <path>` runs a Lua script file.
   * **Lua themes**: drop `*.lua` files into `~/tedit-config/themes`, list them with `lua-themes`, and apply via `theme <name>`.
 
+For more information about Plugins & Themes for Tedit, see [here](https://github.com/RobertFlexx/tedit/blob/main/How%20Plugins%20Work.md).
+
 ---
 
 ## Clone & Use the Tools (with sudo, git clone project first)
