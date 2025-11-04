@@ -19,7 +19,7 @@
 
 * **Syntax highlighting (auto-detect)** C/C++, Python, Shell, Ruby, JS/TS, HTML, CSS, JSON (toggle with `highlight on/off`, override via `set lang <name>`).
 
-* **Themes** `default`, `dark`, `neon`, `matrix`, `paper` (`theme <name>`).
+* **Themes** built-in: `default`, `dark`, `neon`, `matrix`, `paper`, `yellow`, `iceberg` (`theme <name>`). Plus **Lua themes** from `~/tedit-config/themes` (list them with `lua-themes`, load with `theme <name>`).
 
 * **Buffers (multi-file)** `new`, `bnext`, `bprev`, `lsb` to hop between files.
 
@@ -29,7 +29,7 @@
 
 * **Range-aware write & read** `write [range] <path>`, `read <path> [n]`.
 
-* **Display controls** `set wrap on|off`, `set truncate on|off`, line numbers toggle via `set number on|off` (or `number`).
+* **Display controls** `set wrap on/off`, `set truncate on/off`, line numbers toggle via `set number on/off` (or `number`).
 
 * **Hooks & flair**
 
@@ -46,13 +46,7 @@
   * Auto-loads `*.lua` files from `~/tedit-config/plugins` at startup.
   * `:plugins` shows loaded plugins; `:reload-plugins` reloads from disk.
   * `:lua <code>` runs inline Lua; `:luafile <path>` runs a Lua script file.
-
-* **New Tools (Utility Scripts)**
-
-  * **install.sh** — Installs dependencies, builds, and installs `tedit` automatically with a progress bar and package manager detection.
-  * **uninstall.sh** — Cleanly removes `tedit` from your system, including PATH entries added by the installer.
-  * **update.sh** — Checks for git updates. If no updates are found, prints *“Tedit is up to date.”*; otherwise pulls changes, rebuilds, and reinstalls automatically.
-  * **man page (`tedit.1`)** — Installed automatically with `make install` or `install.sh`, viewable with `man tedit`.
+  * **Lua themes**: drop `*.lua` files into `~/tedit-config/themes`, list them with `lua-themes`, and apply via `theme <name>`.
 
 ---
 
@@ -191,38 +185,39 @@ tedit> wq
 
 ## Basic Commands (Cheat Sheet)
 
-| Command                           | Description                                              |      |             |                |
-| --------------------------------- | -------------------------------------------------------- | ---- | ----------- | -------------- |
-| `open <file>`                     | Open a file                                              |      |             |                |
-| `w` / `write`                     | Save                                                     |      |             |                |
-| `wq`                              | Save & quit                                              |      |             |                |
-| `q`                               | Quit (prompts if unsaved)                                |      |             |                |
-| `p [range]` / `r <n>`             | Print lines / show one line                              |      |             |                |
-| `a` / `i <n>`                     | Append / insert before line *n* (`.` alone to finish)    |      |             |                |
-| `d [range]` / `m <from> <to>`     | Delete range / move a line                               |      |             |                |
-| `join [range]`                    | Join lines into one                                      |      |             |                |
-| `find` / `findi` / `findre`       | Search (plain / case-insensitive / regex)                |      |             |                |
-| `n` / `N`                         | Next / previous search hit                               |      |             |                |
-| `repl old new` / `replg …`        | Replace first / replace globally per line                |      |             |                |
-| `undo` / `redo`                   | History navigation                                       |      |             |                |
-| `goto <n>`                        | Jump to line *n*                                         |      |             |                |
-| `read <path> [n]`                 | Insert file after line *n* (default: end)                |      |             |                |
-| `write [range] <path>`            | Write range out to a new path                            |      |             |                |
-| `filter <range> !cmd`             | Pipe range through shell and replace                     |      |             |                |
-| `theme <name>`                    | `default`, `dark`, `neon`, `matrix`, `paper`             |      |             |                |
-| `highlight on/off`                | Toggle syntax highlighting                               |      |             |                |
-| `set number                       | backup                                                   | wrap | truncate …` | Editor toggles |
-| `set autosave <sec>`              | Autosave interval for crash recovery snapshots           |      |             |                |
-| `set lang <name>`                 | Force a syntax (`cpp, python, sh, rb, js, html, css…`)   |      |             |                |
-| `alias <from> <to…>`              | Define command aliases                                   |      |             |                |
-| `new` / `bnext` / `bprev` / `lsb` | Multi-buffer workflow                                    |      |             |                |
-| `diff`                            | Show changes vs on-disk                                  |      |             |                |
-| `ls [-a] [-l] [path]` / `pwd`     | Directory helpers                                        |      |             |                |
-| `cd <dir>`                        | Change directory (use `~`, `.`, `..`)                    |      |             |                |
-| `clear`                           | Clear screen + scrollback                                |      |             |                |
-| `lua <code>`                      | Run inline Lua code                                      |      |             |                |
-| `luafile <path>`                  | Run a Lua script file                                    |      |             |                |
-| `plugins` / `reload-plugins`      | List or reload Lua plugins from `~/tedit-config/plugins` |      |             |                |
+| Command                           | Description                                                                     |      |             |                |
+| --------------------------------- | ------------------------------------------------------------------------------- | ---- | ----------- | -------------- |
+| `open <file>`                     | Open a file                                                                     |      |             |                |
+| `w` / `write`                     | Save                                                                            |      |             |                |
+| `wq`                              | Save & quit                                                                     |      |             |                |
+| `q`                               | Quit (prompts if unsaved)                                                       |      |             |                |
+| `p [range]` / `r <n>`             | Print lines / show one line                                                     |      |             |                |
+| `a` / `i <n>`                     | Append / insert before line *n* (`.` alone to finish)                           |      |             |                |
+| `d [range]` / `m <from> <to>`     | Delete range / move a line                                                      |      |             |                |
+| `join [range]`                    | Join lines into one                                                             |      |             |                |
+| `find` / `findi` / `findre`       | Search (plain / case-insensitive / regex)                                       |      |             |                |
+| `n` / `N`                         | Next / previous search hit                                                      |      |             |                |
+| `repl old new` / `replg …`        | Replace first / replace globally per line                                       |      |             |                |
+| `undo` / `redo`                   | History navigation                                                              |      |             |                |
+| `goto <n>`                        | Jump to line *n*                                                                |      |             |                |
+| `read <path> [n]`                 | Insert file after line *n* (default: end)                                       |      |             |                |
+| `write [range] <path>`            | Write range out to a new path                                                   |      |             |                |
+| `filter <range> !cmd`             | Pipe range through shell and replace                                            |      |             |                |
+| `theme <name>`                    | `default`, `dark`, `neon`, `matrix`, `paper`, `yellow`, `iceberg` or Lua themes |      |             |                |
+| `highlight on/off`                | Toggle syntax highlighting                                                      |      |             |                |
+| `set number                       | backup                                                                          | wrap | truncate …` | Editor toggles |
+| `set autosave <sec>`              | Autosave interval for crash recovery snapshots                                  |      |             |                |
+| `set lang <name>`                 | Force a syntax (`cpp, python, sh, rb, js, html, css…`)                          |      |             |                |
+| `alias <from> <to…>`              | Define command aliases                                                          |      |             |                |
+| `new` / `bnext` / `bprev` / `lsb` | Multi-buffer workflow                                                           |      |             |                |
+| `diff`                            | Show changes vs on-disk                                                         |      |             |                |
+| `ls [-a] [-l] [path]` / `pwd`     | Directory helpers                                                               |      |             |                |
+| `cd <dir>`                        | Change directory (use `~`, `.`, `..`)                                           |      |             |                |
+| `clear`                           | Clear screen + scrollback                                                       |      |             |                |
+| `lua <code>`                      | Run inline Lua code                                                             |      |             |                |
+| `luafile <path>`                  | Run a Lua script file                                                           |      |             |                |
+| `plugins` / `reload-plugins`      | List or reload Lua plugins from `~/tedit-config/plugins`                        |      |             |                |
+| `lua-themes`                      | List Lua themes from `~/tedit-config/themes`                                    |      |             |                |
 
 ---
 
@@ -257,7 +252,9 @@ alias    wq!     wq
 * Any `*.lua` file in that directory is auto-loaded on startup.
 * Use `:plugins` to list them, `:reload-plugins` to re-load without restarting.
 
-Example minimal plugin (`~/tedit-config/plugins/hello.lua`):
+### Simple plugin example (even if you don't know Lua)
+
+Create `~/tedit-config/plugins/hello.lua` with:
 
 ```lua
 -- Print a greeting when tedit starts
@@ -265,6 +262,8 @@ if tedit_echo then
   tedit_echo("hello from lua plugin!")
 end
 ```
+
+That’s it. You don’t need to know Lua to use this: just copy the file, change the message text if you like, and restart `tedit`. On startup you should see the greeting.
 
 Within Lua you can also:
 
@@ -279,6 +278,69 @@ if tedit_print then
   tedit_print(1)
 end
 ```
+
+**Lua themes** (optional):
+
+* Stored under `~/tedit-config/themes`.
+* Any `*.lua` file there can be selected as a theme with `theme <name>`.
+* Use `lua-themes` inside `tedit` to list Lua themes that are available.
+
+### Simple Lua theme example (copy-paste friendly)
+
+1. Create the folder if it doesn’t exist:
+
+   ```bash
+   mkdir -p ~/tedit-config/themes
+   ```
+
+2. Create `~/tedit-config/themes/pink.lua` with this content:
+
+   ```lua
+   -- ~/.tedit-config/themes/pink.lua
+   -- You can copy‑paste this even if you don't know Lua.
+   -- Save, then in tedit run:  lua-themes   and   theme pink
+
+   return {
+     accent     = "\27[95m", -- magenta (used for prompts/titles)
+     ok         = "\27[92m", -- green (success messages)
+     warn       = "\27[93m", -- yellow (warnings)
+     err        = "\27[91m", -- red (errors)
+     dim        = "\27[90m", -- dim text / hints
+     prompt     = "\27[95m",
+     input      = "\27[97m",
+     gutter     = "\27[90m",
+     title      = "\27[95m",
+     help_cmd   = "\27[95m",
+     help_arg   = "\27[96m",
+     help_text  = "\27[90m",
+   }
+   ```
+
+3. Start `tedit`, then run:
+
+   ```text
+   lua-themes      # to see 'pink' listed
+   theme pink      # to activate it
+   ```
+
+You don’t have to understand the Lua syntax here; the important part is the `return { ... }` table. You can experiment later by changing one color at a time and re-running `theme pink`.
+
+### ⚠️ Plugin & theme safety (WARNING / DISCLAIMER)
+
+Lua plugins and Lua themes are just **Lua scripts**. That means they can, in principle:
+
+* Read, modify, or delete files you have access to.
+* Run shell commands indirectly (e.g., via helpers you expose, or other Lua APIs if you add them).
+* Interact with your system in ways that are not obvious from a quick glance.
+
+**Treat any third-party plugin or theme like you would a shell script from the internet.**
+
+* Only install plugins/themes from sources you genuinely trust.
+* Prefer small, readable scripts you can skim yourself.
+* Be especially careful with plugins that claim to "optimize", "clean up", or "manage" files or system config.
+* Never give random people root/doas/sudo access just because a plugin suggests it.
+
+If in doubt, **don’t run it**. Stick to simple, local tweaks (like the examples above) or review the code with someone you trust.
 
 ---
 

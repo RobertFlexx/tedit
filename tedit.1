@@ -1,4 +1,4 @@
-.TH TEDIT 1 "October 2025" "tedit 2.0.0" "User Commands"
+.TH TEDIT 1 "November, 3, 2025" "tedit 2.0.1" "User Commands"
 .SH NAME
 tedit - a minimal yet mighty command-line text editor
 .SH SYNOPSIS
@@ -51,7 +51,12 @@ HTML, CSS, JSON, and more. Highlighting can be toggled via
 \fB:set lang <name>\fR.
 .IP [bu]
 Configurable themes and color schemes (e.g. \fBdefault\fR, \fBdark\fR,
-\fBneon\fR, \fBmatrix\fR, \fBpaper\fR) using \fB:theme <name>\fR.
+\fBneon\fR, \fBmatrix\fR, \fBpaper\fR, \fByellow\fR, \fBiceberg\fR) using
+\fB:theme <name>\fR for built-in themes, plus Lua-based themes loaded from
+\fI~/tedit-config/themes/<name>.lua\fR.
+.IP [bu]
+Lua theme listing via \fB:lua-themes\fR, which shows all \fB*.lua\fR theme
+files found under \fI~/tedit-config/themes\fR.
 .IP [bu]
 Command history and tab completion: first word completion for editor commands,
 filesystem completion for paths, and directory-only completion for
@@ -99,6 +104,7 @@ Common editor commands:
 :repl old new      # replace
 :theme neon        # change theme
 :highlight on      # enable syntax highlighting
+:lua-themes        # list available Lua themes
 :lua tedit_echo("hi")   # run a small Lua snippet
 :plugins           # list loaded Lua plugins
 :wq                # save and quit
@@ -116,6 +122,10 @@ etc.).
 .IP "~/tedit-config/plugins"
 Per-user Lua plugin directory. Any \fB*.lua\fR files in this directory are
 loaded at startup; errors are reported in the editor.
+.IP "~/tedit-config/themes"
+Per-user Lua theme directory. Any \fB*.lua\fR files in this directory define
+named themes that can be listed with \fB:lua-themes\fR and loaded with
+\fB:theme <name>\fR.
 .IP "~/.tedit/hooks/on_save"
 User-defined script executed after each save.
 .IP "~/.tedit/hooks/on_quit"
@@ -178,7 +188,6 @@ creating a marker file or using an environment variable:
 .PP
 .RS
 .EX
-
 # One-time marker (replace with your absolute repo path):
 
 sudo mkdir -p /usr/local/share/tedit
@@ -234,6 +243,9 @@ List the names of successfully loaded Lua plugins.
 .TP
 .B :reload-plugins
 Rescan and reload \fB*.lua\fR files from the plugin directory.
+.TP
+.B :lua-themes
+List available Lua theme files (by name) from \fI~/tedit-config/themes\fR.
 .PP
 Plugins are simple Lua files placed under
 .IR ~/tedit-config/plugins .
@@ -241,6 +253,11 @@ At startup,
 .B tedit
 will attempt to load each \fB*.lua\fR file once; any error messages are printed
 inside the editor.
+.PP
+Lua-based themes are stored separately under
+.IR ~/tedit-config/themes .
+Each theme file typically returns or defines a Lua table describing colors and
+is loaded on demand via \fB:theme <name>\fR rather than at startup.
 .PP
 A few helper functions are exposed to Lua:
 .IP \[bu] 2
@@ -250,6 +267,13 @@ tedit prompt.
 \fBtedit_echo(str)\fR – print a message using the editor's accent color.
 .IP \[bu]
 \fBtedit_print(line)\fR – print a specific line from the current buffer.
+.PP
+Lua plugins and themes run with the same privileges as your user account and
+can execute arbitrary code (including shell commands and file I/O). Treat
+third-party Lua code as untrusted unless you have reviewed it. \fBtedit\fR
+performs a lightweight scan for obviously dangerous patterns (such as
+\fBos.execute\fR, \fBio.popen\fR, \fBdofile\fR, and similar) when loading
+plugins, but this is only a convenience warning, not a security guarantee.
 .SH ENVIRONMENT
 .TP
 .B TEDIT_REPO
@@ -285,7 +309,7 @@ An error occurred (file not found, permission denied, build failure, etc.).
 Written by Robert (aka RobertFlexx).
 .SH HOMEPAGE
 Project page and source code:
-.UR [https://github.com/RobertFlexx/tedit](https://github.com/RobertFlexx/tedit)
+.UR https://github.com/RobertFlexx/tedit
 .UE
 .SH SEE ALSO
 .BR ed (1),

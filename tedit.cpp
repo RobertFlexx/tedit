@@ -1,5 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
-#define TEDIT_VERSION "2.0.0"
+#define TEDIT_VERSION "2.0.1"
 #include <algorithm>
 #include <cerrno>
 #include <cctype>
@@ -132,11 +132,17 @@ static string tedit_config_dir(){
     fs::create_directories(root, ec);
     string plugins = root + "/plugins";
     fs::create_directories(plugins, ec);
+    string themes = root + "/themes";
+    fs::create_directories(themes, ec);
     return root;
 }
 
 static string tedit_plugins_dir(){
     return tedit_config_dir() + "/plugins";
+}
+
+static string tedit_themes_dir(){
+    return tedit_config_dir() + "/themes";
 }
 
 /* ------------------------------------------------------------------ */
@@ -161,7 +167,7 @@ static const string C_BRIGHT_RED   = "\033[91m";
 static const string C_MAGENTA      = "\033[35m";
 static const string C_BRIGHT_MAGENTA = "\033[95m";
 
-enum class Theme { Default, Dark, Neon, Matrix, Paper };
+enum class Theme { Default, Dark, Neon, Matrix, Paper, Yellow, Iceberg };
 
 struct ThemePalette {
     string accent, ok, warn, err, dim;
@@ -233,6 +239,36 @@ static ThemePalette palette_for(Theme t){
                 C_BRIGHT_BLACK,
                 C_BRIGHT_BLACK
             };
+        case Theme::Yellow:
+            return {
+                C_BRIGHT_YEL,
+                C_BRIGHT_GREEN,
+                C_YEL,
+                C_RED,
+                C_BRIGHT_BLACK,
+                C_BRIGHT_YEL,
+                C_BRIGHT_WHITE,
+                C_BRIGHT_BLACK,
+                C_BOLD + C_BRIGHT_YEL,
+                C_BRIGHT_YEL,
+                C_BRIGHT_BLACK,
+                C_BRIGHT_BLACK
+            };
+        case Theme::Iceberg:
+            return {
+                C_BRIGHT_CYAN,
+                C_BRIGHT_GREEN,
+                C_YEL,
+                C_RED,
+                C_BRIGHT_BLACK,
+                C_BRIGHT_CYAN,
+                C_BRIGHT_WHITE,
+                C_BRIGHT_BLACK,
+                C_BOLD + C_BRIGHT_CYAN,
+                C_BRIGHT_CYAN,
+                C_BRIGHT_BLACK,
+                C_BRIGHT_BLACK
+            };
         default:
             return {
                 C_CYAN,
@@ -249,6 +285,89 @@ static ThemePalette palette_for(Theme t){
                 C_DIM
             };
     }
+}
+
+/* Load a ThemePalette from ~/.tedit-config/themes/<name>.lua if present.
+ *   The Lua file must return (or set global) a table with string fields
+ *   matching ThemePalette keys. */
+static bool load_theme_from_lua_file(const string& name, ThemePalette& outP){
+    string dir = tedit_themes_dir();
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    fs::path p = fs::path(dir) / (name + ".lua");
+
+    if(!fs::exists(p, ec) || !fs::is_regular_file(p, ec)){
+        return false;
+    }
+
+    lua_State* LT = luaL_newstate();
+    if(!LT){
+        cout<<C_RED<<"theme: failed to initialize lua state"<<C_RESET<<"\n";
+        return false;
+    }
+    luaL_openlibs(LT);
+
+    /* expose the same helpers plugins get so advanced themes
+     *       can call tedit_command/echo/print safely */
+    lua_register(LT, "tedit_command", l_tedit_command);
+    lua_register(LT, "tedit_echo",    l_tedit_echo);
+    lua_register(LT, "tedit_print",   l_tedit_print);
+
+    int rc = luaL_loadfile(LT, p.string().c_str());
+    if(rc != LUA_OK){
+        const char* msg = lua_tostring(LT, -1);
+        cout<<C_RED<<"theme: lua load error ("<<p.string()<<"): "<<(msg?msg:"")<<C_RESET<<"\n";
+        lua_pop(LT, 1);
+        lua_close(LT);
+        return false;
+    }
+
+    rc = lua_pcall(LT, 0, LUA_MULTRET, 0);
+    if(rc != LUA_OK){
+        const char* msg = lua_tostring(LT, -1);
+        cout<<C_RED<<"theme: lua runtime error ("<<p.string()<<"): "<<(msg?msg:"")<<C_RESET<<"\n";
+        lua_pop(LT, 1);
+        lua_close(LT);
+        return false;
+    }
+
+    if(lua_gettop(LT) == 0){
+        lua_getglobal(LT, "theme");
+    }
+    if(!lua_istable(LT, -1)){
+        cout<<C_RED<<"theme: lua file did not return a theme table"<<C_RESET<<"\n";
+        lua_close(LT);
+        return false;
+    }
+
+    ThemePalette base = palette_for(Theme::Default);
+    ThemePalette P = base;
+
+    auto assign = [&](const char* key, string& dst){
+        lua_getfield(LT, -1, key);
+        if(lua_isstring(LT, -1)){
+            const char* v = lua_tostring(LT, -1);
+            if(v) dst = v;
+        }
+        lua_pop(LT, 1);
+    };
+
+    assign("accent",     P.accent);
+    assign("ok",         P.ok);
+    assign("warn",       P.warn);
+    assign("err",        P.err);
+    assign("dim",        P.dim);
+    assign("prompt",     P.prompt);
+    assign("input",      P.input);
+    assign("gutter",     P.gutter);
+    assign("title",      P.title);
+    assign("help_cmd",   P.help_cmd);
+    assign("help_arg",   P.help_arg);
+    assign("help_text",  P.help_text);
+
+    lua_close(LT);
+    outP = P;
+    return true;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1011,6 +1130,9 @@ struct Editor{
     Theme theme = Theme::Default;
     ThemePalette P = palette_for(theme);
 
+    /* NEW: remember active lua theme name for persistence */
+    string active_lua_theme;
+
     vector<Buffer> others;
     string last_search; bool last_icase=false; size_t last_index=0;
     int autosave_sec = 120;
@@ -1024,6 +1146,8 @@ struct Editor{
 
     lua_State* L = nullptr;
     vector<string> plugin_names;
+    std::map<string,string> plugin_files;
+    string current_plugin;
 
     Editor(){
         g_editor = this;
@@ -1032,7 +1156,9 @@ struct Editor{
             "append","a","insert","i","delete","d","move","m","join","find","findi","findre",
             "repl","replg","read","undo","u","redo","set","filter","ls","pwd","number",
             "goto","n","N","new","bnext","bprev","lsb","theme","highlight","alias","diff",
-            "cd","clear","version","lua","luafile","plugins","reload-plugins"
+            "cd","clear","version","lua","luafile","run-plugin","plugins","reload-plugins",
+            /* NEW: command for listing lua themes */
+            "lua-themes"
         };
         lr.set_theme_colors(P);
         init_lua();
@@ -1045,15 +1171,26 @@ struct Editor{
     string cfg_path() const { return tedit_config_dir() + "/.teditrc"; }
 
     static string theme_name(Theme t){
-        switch(t){ case Theme::Dark: return "dark"; case Theme::Neon: return "neon"; case Theme::Matrix: return "matrix"; case Theme::Paper: return "paper"; default: return "default"; }
+        switch(t){
+            case Theme::Dark:    return "dark";
+            case Theme::Neon:    return "neon";
+            case Theme::Matrix:  return "matrix";
+            case Theme::Paper:   return "paper";
+            case Theme::Yellow:  return "yellow";
+            case Theme::Iceberg: return "iceberg";
+            default:             return "default";
+        }
     }
-    static Theme theme_from_name(const string& s){
+    static bool theme_from_name(const string& s, Theme& out){
         string n=lower(s);
-        if(n=="dark") return Theme::Dark;
-        if(n=="neon") return Theme::Neon;
-        if(n=="matrix") return Theme::Matrix;
-        if(n=="paper") return Theme::Paper;
-        return Theme::Default;
+        if(n=="default"){ out = Theme::Default; return true; }
+        if(n=="dark"){    out = Theme::Dark;    return true; }
+        if(n=="neon"){    out = Theme::Neon;    return true; }
+        if(n=="matrix"){  out = Theme::Matrix;  return true; }
+        if(n=="paper"){   out = Theme::Paper;   return true; }
+        if(n=="yellow"){  out = Theme::Yellow;  return true; }
+        if(n=="iceberg"){ out = Theme::Iceberg; return true; }
+        return false;
     }
     static bool parse_bool_string(const string& v, bool& out){
         string s=lower(trim_copy(v));
@@ -1067,11 +1204,14 @@ struct Editor{
     void init_lua(){
         if(L) return;
         L = luaL_newstate();
-        if(!L) return;
+        if(!L){
+            cout<<C_RED<<"lua: failed to initialize state"<<C_RESET<<"\n";
+            return;
+        }
         luaL_openlibs(L);
         lua_register(L, "tedit_command", l_tedit_command);
-        lua_register(L, "tedit_echo", l_tedit_echo);
-        lua_register(L, "tedit_print", l_tedit_print);
+        lua_register(L, "tedit_echo",    l_tedit_echo);
+        lua_register(L, "tedit_print",   l_tedit_print);
         load_lua_plugins();
     }
 
@@ -1084,6 +1224,7 @@ struct Editor{
 
     void load_lua_plugins(){
         plugin_names.clear();
+        plugin_files.clear();
         if(!L) return;
         string dir = tedit_plugins_dir();
         std::error_code ec;
@@ -1095,30 +1236,117 @@ struct Editor{
             fs::path p = entry.path();
             if(p.extension() != ".lua") continue;
             string fpath = p.string();
-            int rc = luaL_loadfile(L, fpath.c_str());
-            if(rc != LUA_OK){
-                const char* msg = lua_tostring(L, -1);
-                cout<<P.err<<"lua plugin error ("<<fpath<<"): "<<(msg?msg:"")<<C_RESET<<"\n";
-                lua_pop(L, 1);
-                continue;
-            }
-            rc = lua_pcall(L, 0, 0, 0);
-            if(rc != LUA_OK){
-                const char* msg = lua_tostring(L, -1);
-                cout<<P.err<<"lua plugin error ("<<fpath<<"): "<<(msg?msg:"")<<C_RESET<<"\n";
-                lua_pop(L, 1);
-                continue;
-            }
-            string name = p.stem().string();
+            string name  = p.stem().string();
             plugin_names.push_back(name);
-            cout<<P.ok<<"loaded "<<name<<C_RESET<<"\n";
+            plugin_files[name] = fpath;
+        }
+    }
+
+    static bool scan_plugin_text(const string& content, vector<string>& hits){
+        static const char* patterns[] = {
+            "os.execute", "io.popen", "dofile", "loadfile",
+            "package.loadlib", "debug.", "os.remove", "os.rename"
+        };
+        hits.clear();
+        for(const char* pat : patterns){
+            if(content.find(pat) != string::npos){
+                hits.emplace_back(pat);
+            }
+        }
+        return !hits.empty();
+    }
+
+    bool run_plugin_file(const string& display_name, const string& path){
+        if(!L){
+            cout<<P.err<<"run-plugin: lua not available"<<C_RESET<<"\n";
+            return false;
+        }
+
+        std::ifstream in(path);
+        if(!in.good()){
+            cout<<P.err<<"run-plugin: cannot open "<<path<<C_RESET<<"\n";
+            return false;
+        }
+        std::ostringstream buf;
+        buf<<in.rdbuf();
+        string content = buf.str();
+
+        vector<string> hits;
+        if(scan_plugin_text(content, hits)){
+            cout<<P.warn<<"This plugin looks potentially malicious (uses: ";
+            for(size_t i=0;i<hits.size();++i){
+                if(i) cout<<", ";
+                cout<<hits[i];
+            }
+            cout<<")."<<C_RESET<<"\n";
+            cout<<P.warn<<"This plugin is potentially malicious. Do you really want to run this? [y/N] "<<C_RESET<<std::flush;
+            char c = 0;
+            std::cin.get(c);
+            string dump;
+            std::getline(std::cin, dump);
+            if(c!='y' && c!='Y'){
+                cout<<P.dim<<"run-plugin: aborted by user"<<C_RESET<<"\n";
+                return false;
+            }
+        }
+
+        int rc = luaL_loadfile(L, path.c_str());
+        if(rc != LUA_OK){
+            const char* msg = lua_tostring(L, -1);
+            cout<<P.err<<"run-plugin: load error: "<<(msg?msg:"")<<C_RESET<<"\n";
+            lua_pop(L, 1);
+            return false;
+        }
+        rc = lua_pcall(L, 0, 0, 0);
+        if(rc != LUA_OK){
+            const char* msg = lua_tostring(L, -1);
+            cout<<P.err<<"run-plugin: runtime error: "<<(msg?msg:"")<<C_RESET<<"\n";
+            lua_pop(L, 1);
+            return false;
+        }
+
+        current_plugin = display_name;
+        cout<<P.ok<<"run-plugin: loaded "<<display_name<<C_RESET<<"\n";
+        return true;
+    }
+
+    /* NEW: list ~/.tedit-config/themes (.lua files) */
+    void list_lua_themes(){
+        string dir = tedit_themes_dir();
+        std::error_code ec;
+        if(!fs::exists(dir, ec) || !fs::is_directory(dir, ec)){
+            cout<<"no lua themes directory ("<<dir<<")\n";
+            return;
+        }
+        vector<string> names;
+        fs::directory_iterator it(dir, fs::directory_options::skip_permission_denied, ec), end;
+        for(; !ec && it!=end; it.increment(ec)){
+            const auto& e = *it;
+            if(!e.is_regular_file()) continue;
+            fs::path p = e.path();
+            if(p.extension() == ".lua") names.push_back(p.stem().string());
+        }
+        std::sort(names.begin(), names.end());
+        if(names.empty()){
+            cout<<"no lua themes found\n";
+            return;
+        }
+        cout<<"lua themes:\n";
+        for(const auto& n : names){
+            bool is_current = !active_lua_theme.empty() && lower(n) == lower(active_lua_theme);
+            cout<<"- "<<n<<(is_current?" *":"")<<"\n";
         }
     }
 
     void save_config(){
         std::ofstream out(cfg_path(), std::ios::binary|std::ios::trunc);
         if(!out.good()) return;
-        out<<"theme="<<theme_name(theme)<<"\n";
+        /* NEW: persist lua theme name if active; else built-in */
+        if(!active_lua_theme.empty()){
+            out<<"theme="<<active_lua_theme<<"\n";
+        } else {
+            out<<"theme="<<theme_name(theme)<<"\n";
+        }
         out<<"highlight="<<(buf.highlight?"on":"off")<<"\n";
         out<<"number="<<(buf.number?"on":"off")<<"\n";
         out<<"backup="<<(buf.backup?"on":"off")<<"\n";
@@ -1150,7 +1378,23 @@ struct Editor{
             if(eq==string::npos) continue;
             string key=lower(trim_copy(line.substr(0,eq)));
             string val=trim_copy(line.substr(eq+1));
-            if(key=="theme"){ theme=theme_from_name(val); P=palette_for(theme); lr.set_theme_colors(P); }
+            if(key=="theme"){
+                Theme t;
+                if(theme_from_name(val, t)){
+                    theme = t;
+                    active_lua_theme.clear(); /* NEW: clear lua marker on built-in */
+                    P=palette_for(theme);
+                    lr.set_theme_colors(P);
+                } else {
+                    /* NEW: try to load lua theme by name */
+                    ThemePalette luaP;
+                    if(load_theme_from_lua_file(val, luaP)){
+                        P = luaP;
+                        active_lua_theme = val;
+                        lr.set_theme_colors(P);
+                    }
+                }
+            }
             else if(key=="highlight"){ bool b; if(parse_bool_string(val,b)) buf.highlight=b; }
             else if(key=="number"){ bool b; if(parse_bool_string(val,b)) buf.number=b; }
             else if(key=="backup"){ bool b; if(parse_bool_string(val,b)) buf.backup=b; }
@@ -1197,12 +1441,13 @@ struct Editor{
         using std::chrono::system_clock;
         auto t = system_clock::to_time_t(system_clock::now());
         char tb[32]; strftime(tb,sizeof(tb),"%H:%M:%S", localtime(&t));
-        string tname = (theme==Theme::Dark?"dark": theme==Theme::Neon?"neon": theme==Theme::Matrix?"matrix": theme==Theme::Paper?"paper":"default");
+        string tname = theme_name(theme);
         cout<<P.dim<<"["<< (buf.path.empty()? "(unnamed)": buf.path) << "] "
         <<"lines="<<buf.lines.size()<<" chars="<<char_count(buf)
         <<(buf.dirty?" *":"")
         <<" | "<<tb<<" | theme:"<<tname
         <<" | wrap:"<<(wrap_long?"on":"off")
+        <<" | plugin:"<<(current_plugin.empty() ? "none" : current_plugin)
         <<C_RESET<<"\n";
     }
 
@@ -1215,7 +1460,7 @@ struct Editor{
             <<" — "<<P.help_text<<desc<<C_RESET<<"\n";
         };
 
-        cout<<P.title<<"Commands (':' optional)"<<C_RESET<<"\n";
+        cout<<P.title<<"Commands (':' optional, except where noted)"<<C_RESET<<"\n";
         CMD("open <path>",            "", "open file");
         CMD("info",                   "", "buffer + file info");
         CMD("w|write [path]",         "", "save (atomic), optional new path");
@@ -1245,7 +1490,7 @@ struct Editor{
         CMD("set truncate on|off",    "", "truncate line display when wrap=off");
         CMD("set lang <name>",        "", "override syntax (auto by extension)");
         CMD("highlight on|off",       "", "simple syntax highlighting");
-        CMD("theme <name>",           "", "default|dark|neon|matrix|paper");
+        CMD("theme <name>",           "", "default|dark|neon|matrix|paper|yellow|iceberg or lua theme");
         CMD("alias <from> <to...>",   "", "define command alias");
         CMD("new [path]",             "", "open new buffer (push current)");
         CMD("bnext | bprev | lsb",    "", "cycle/list buffers");
@@ -1256,8 +1501,11 @@ struct Editor{
         CMD("version",                "", "show tedit version");
         CMD("lua <code>",             "", "run Lua code");
         CMD("luafile <path>",         "", "run Lua script file");
-        CMD("plugins",                "", "list loaded Lua plugins");
-        CMD("reload-plugins",         "", "reload Lua plugins from tedit-config/plugins");
+        CMD("run-plugin <name>",      "", "run Lua plugin (requires :run-plugin)");
+        CMD("plugins",                "", "list available Lua plugins");
+        CMD("reload-plugins",         "", "rescan Lua plugins from tedit-config/plugins");
+        /* NEW: documented command */
+        CMD("lua-themes",             "", "list available Lua themes");
         cout<<P.dim<<"Tab: first word => commands only; after 'cd ' => directories only."<<C_RESET<<"\n";
     }
 
@@ -1415,11 +1663,28 @@ struct Editor{
     }
 
     void cycle_theme(const string& name){
-        theme = theme_from_name(name);
-        P = palette_for(theme);
-        lr.set_theme_colors(P);
-        cout<<P.ok<<"theme set"<<C_RESET<<"\n";
-        save_config();
+        Theme t;
+        if(theme_from_name(name, t)){
+            theme = t;
+            active_lua_theme.clear(); /* NEW: reset lua theme marker */
+            P = palette_for(theme);
+            lr.set_theme_colors(P);
+            cout<<P.ok<<"theme set"<<C_RESET<<"\n";
+            save_config(); /* NEW: persist built-in */
+            return;
+        }
+
+        ThemePalette luaP;
+        if(load_theme_from_lua_file(name, luaP)){
+            P = luaP;
+            active_lua_theme = name; /* NEW: remember active lua theme */
+            lr.set_theme_colors(P);
+            cout<<P.ok<<"theme set (lua: "<<name<<")"<<C_RESET<<"\n";
+            save_config(); /* NEW: persist lua theme */
+            return;
+        }
+
+        cout<<P.err<<"Theme not found"<<C_RESET<<"\n";
     }
 
     void open_new_buffer(const string& path){
@@ -1483,7 +1748,12 @@ struct Editor{
 
         string in = trim_copy(raw);
         if(in.empty()) return true;
-        if(in[0]==':'){ in = trim_copy(in.substr(1)); if(in.empty()) return true; }
+        bool had_colon = false;
+        if(in[0]==':'){
+            had_colon = true;
+            in = trim_copy(in.substr(1));
+            if(in.empty()) return true;
+        }
 
         {
             std::istringstream ss(in); string tok; ss>>tok;
@@ -1494,7 +1764,7 @@ struct Editor{
             }
         }
 
-        if(in[0]=='/'){
+        if(!in.empty() && in[0]=='/'){
             string q=in.substr(1); last_search=q; last_icase=false; last_index=0;
             search_plain(buf,q,false); return true;
         }
@@ -1600,11 +1870,11 @@ struct Editor{
             std::istringstream ts(rest); string p; long n=-1; ts>>p;
             if(p.empty()){ cout<<P.warn<<"usage: read <path> [n]"<<C_RESET<<"\n"; return true; }
             if(!(ts>>n)) n=-1;
-            std::ifstream in(p);
-            if(!in.good()){ cout<<P.err<<"read: cannot open"<<C_RESET<<"\n"; return true; }
+            std::ifstream in2(p);
+            if(!in2.good()){ cout<<P.err<<"read: cannot open"<<C_RESET<<"\n"; return true; }
             push_undo();
             vector<string> R; string L;
-            while(std::getline(in,L)){ rstrip_newline(L); R.push_back(L); }
+            while(std::getline(in2,L)){ rstrip_newline(L); R.push_back(L); }
             size_t at = (n<0)? buf.lines.size(): (size_t)n;
             if(at>buf.lines.size()) at=buf.lines.size();
             buf.lines.insert(buf.lines.begin()+ (long)at, R.begin(), R.end());
@@ -1692,10 +1962,22 @@ struct Editor{
             } else cout<<P.warn<<"unknown setting"<<C_RESET<<"\n";
             return true;
         }
-
+        // pls support my project, i werk hord :D
         if(lc=="number"){ buf.number = !buf.number; cout<<"number: "<<(buf.number?"on":"off")<<"\n"; save_config(); return true; }
 
-        if(lc=="theme"){ if(rest.empty()){ cout<<P.warn<<"usage: theme <name>"<<C_RESET<<"\n"; return true; } cycle_theme(rest); return true; }
+        if(lc=="theme"){
+            if(rest.empty()){
+                cout<<P.warn<<"usage: theme <name>"<<C_RESET<<"\n";
+                return true;
+            }
+            cycle_theme(rest);
+            return true;
+        }
+
+        if(lc=="lua-themes"){ /* NEW: list lua themes */
+            list_lua_themes();
+            return true;
+        }
 
         if(lc=="highlight"){
             string v=lower(rest);
@@ -1752,7 +2034,7 @@ struct Editor{
                 else cout<<P.ok<<"cd: "<<fs::current_path().string()<<C_RESET<<"\n";
                 return true;
             }
-// whats up
+            // whats up
             if(lc=="clear"){ clear_screen(); return true; }
 
             if(lc=="lua"){
@@ -1806,11 +2088,53 @@ struct Editor{
                 return true;
             }
 
+            if(lc=="run-plugin"){
+                if(!had_colon){
+                    cout<<P.warn<<"run-plugin must be invoked as :run-plugin <name|path>"<<C_RESET<<"\n";
+                    return true;
+                }
+                if(!L){
+                    cout<<P.err<<"run-plugin: lua not available"<<C_RESET<<"\n";
+                    return true;
+                }
+                if(rest.empty()){
+                    cout<<P.warn<<"usage: run-plugin <name|path>"<<C_RESET<<"\n";
+                    return true;
+                }
+                string key = rest;
+                string path;
+                string disp;
+                auto itp = plugin_files.find(key);
+                if(itp != plugin_files.end()){
+                    path = itp->second;
+                    disp = key;
+                } else {
+                    string p = expand_path(key);
+                    if(!file_exists(p)){
+                        cout<<P.err<<"run-plugin: no such plugin or path: "<<key<<C_RESET<<"\n";
+                        return true;
+                    }
+                    path = p;
+                    disp = fs::path(path).filename().string();
+                }
+                (void)run_plugin_file(disp, path);
+                return true;
+            }
+
             if(lc=="plugins"){
                 if(plugin_names.empty()){
-                    cout<<"no plugins loaded\n";
+                    cout<<"no plugins found (reload-plugins to rescan)\n";
                 } else {
-                    for(const auto& n : plugin_names) cout<<"- "<<n<<"\n";
+                    cout<<"available plugins:\n";
+                    for(const auto& n : plugin_names){
+                        auto itp = plugin_files.find(n);
+                        bool is_current = (!current_plugin.empty() && current_plugin == n);
+                        if(itp != plugin_files.end()){
+                            cout<<"- "<<n<<" ("<<itp->second<<")"<<(is_current?" *":"")<<"\n";
+                        } else {
+                            cout<<"- "<<n<<(is_current?" *":"")<<"\n";
+                        }
+                    }
                 }
                 return true;
             }
