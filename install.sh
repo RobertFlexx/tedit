@@ -15,21 +15,16 @@ cd "$SCRIPT_DIR" || { echo "ERROR: cannot cd to $SCRIPT_DIR" >&2; exit 2; }
 
 mktemp_file() {
   if tmp=$(mktemp "${TMPDIR:-/tmp}/${APP_NAME}-install.XXXXXX" 2>/dev/null); then
-    printf "%s" "$tmp"
-    return 0
+    printf "%s" "$tmp"; return 0
   fi
   if tmp=$(mktemp -t "${APP_NAME}-install" 2>/dev/null); then
-    printf "%s" "$tmp"
-    return 0
+    printf "%s" "$tmp"; return 0
   fi
   printf "%s" "${TMPDIR:-/tmp}/${APP_NAME}-install.$(date +%s).$$"
 }
 
 LOG="${LOG_FILE:-$(mktemp_file)}.log"
-: >"$LOG" 2>/dev/null || {
-  echo "ERROR: cannot write log file: $LOG" >&2
-  exit 2
-}
+: >"$LOG" 2>/dev/null || { echo "ERROR: cannot write log file: $LOG" >&2; exit 2; }
 
 have(){ command -v "$1" >/dev/null 2>&1; }
 
@@ -80,7 +75,7 @@ DO_STRIP=1
 UPDATE_PATH=1
 FORCE_PREFIX_MODE="auto"  # auto|system|user
 CUSTOM_PREFIX=""
-# really obfuscated shell code sry
+
 usage(){
   cat <<EOF
 $APP_NAME installer
@@ -144,7 +139,7 @@ auth_once(){
 }
 
 # -----------------------------
-# UI (simple, safe, no exit-code bugs)
+# UI (simple, safe)
 # -----------------------------
 CURSOR_HIDE=""; CURSOR_SHOW=""
 if [ "$TTY" -eq 1 ] && have tput; then
@@ -158,35 +153,29 @@ trap 'finish_ui' EXIT INT TERM
 [ "$TTY" -eq 1 ] && printf "%s" "$CURSOR_HIDE"
 
 run_logged(){
-  # Runs command string, logs output, preserves exit code, shows output if verbose.
-  cmd="$1"
-  if [ "$VERBOSE" = "1" ]; then
-    tmpout="$(mktemp_file)"
-    set +e
-    sh -c "$cmd" >"$tmpout" 2>&1
-    rc=$?
-    set -e
-    cat "$tmpout"
-    cat "$tmpout" >>"$LOG"
-    rm -f "$tmpout" 2>/dev/null || :
-    return "$rc"
-  fi
+  tmpout="$(mktemp_file)"
   set +e
-  sh -c "$cmd" >>"$LOG" 2>&1
+  "$@" >"$tmpout" 2>&1
   rc=$?
   set -e
+
+  if [ "$VERBOSE" = "1" ]; then
+    cat "$tmpout"
+  fi
+  cat "$tmpout" >>"$LOG"
+  rm -f "$tmpout" 2>/dev/null || :
   return "$rc"
 }
 
 spinner(){
-  msg="$1"; cmd="$2"
+  msg="$1"; shift
   if [ "$TTY" -ne 1 ] || [ "$VERBOSE" = "1" ]; then
     info "$msg"
-    run_logged "$cmd" || return $?
+    run_logged "$@" || return $?
     return 0
   fi
 
-  run_logged "$cmd" &
+  run_logged "$@" &
   pid=$!
   frames='-\|/'; i=0
   while kill -0 "$pid" 2>/dev/null; do
@@ -202,18 +191,21 @@ spinner(){
 }
 
 run_root(){
-  msg="$1"; cmd="$2"
+  msg="$1"; shift
   if [ -z "$SUDO" ]; then
-    spinner "$msg" "$cmd"
-    return $?
+    spinner "$msg" "$@"; return $?
   fi
 
-  if $SUDO -n true 2>/dev/null; then
-    spinner "$msg" "$SUDO sh -c $(printf %s "$cmd" | sed "s/'/'\\\\''/g;1s/^/'/;\$s/\$/'/")"
-  else
-    warn "[auth] $msg"
-    $SUDO sh -c "$cmd" 2>&1 | tee -a "$LOG"
+  # If non-interactive auth is possible, keep spinner; otherwise run plainly (so prompts work)
+  if [ "$SUDO" = "sudo" ] && sudo -n true 2>/dev/null; then
+    spinner "$msg" sudo -n "$@"; return $?
   fi
+  if [ "$SUDO" = "doas" ] && doas -n true 2>/dev/null; then
+    spinner "$msg" doas -n "$@"; return $?
+  fi
+
+  warn "[auth] $msg"
+  run_logged "$SUDO" "$@"
 }
 
 # -----------------------------
@@ -272,15 +264,19 @@ choose_cxx(){
 }
 
 choose_make(){
-  # prefer gmake on BSD-ish systems if present
-  case "${ID:-}" in
-    freebsd|dragonfly|midnightbsd|ghostbsd|openbsd|netbsd) have gmake && { printf %s "gmake"; return; } ;;
-  esac
+  # Prefer gmake if present (BSD/macOS/GNU make installs)
+  if have gmake; then printf %s "gmake"; return 0; fi
   printf %s "make"
 }
 
+choose_pc(){
+  if have pkg-config; then printf %s "pkg-config"; return 0; fi
+  if have pkgconf; then printf %s "pkgconf"; return 0; fi
+  printf %s ""
+}
+
 # -----------------------------
-# Dependency checks (real checks, not vibes)
+# Dependency checks (real checks)
 # -----------------------------
 cxx_test(){
   cxx="$1"
@@ -297,22 +293,22 @@ EOF
   return "$rc"
 }
 
-pkg_config_bin(){
-  if have pkg-config; then printf %s "pkg-config"; return 0; fi
-  if have pkgconf; then printf %s "pkgconf"; return 0; fi
-  return 1
-}
+# Globals filled in by Lua detection
+LUA_CFLAGS=""
+LUA_LIBS=""
+LUA_PCNAME=""
 
-lua_pc_name(){
+lua_pc_pick(){
   pcbin="$1"
+  [ -n "$pcbin" ] || return 1
   for n in lua5.4 lua-5.4 lua54 lua5.3 lua-5.3 lua53 lua; do
     "$pcbin" --exists "$n" >/dev/null 2>&1 && { printf %s "$n"; return 0; }
   done
   return 1
 }
 
-lua_dev_test(){
-  cxx="$1"; pcbin="$2"; pcname="$3"
+lua_try_compile(){
+  cxx="$1"; cflags="$2"; libs="$3"
   tmp="$(mktemp_file)"
   cat >"$tmp.c" <<'EOF'
 #include <lua.h>
@@ -320,10 +316,8 @@ lua_dev_test(){
 #include <lualib.h>
 int main(void){ lua_State* L = luaL_newstate(); lua_close(L); return 0; }
 EOF
-  cflags="$("$pcbin" --cflags "$pcname" 2>/dev/null || true)"
-  libs="$("$pcbin" --libs "$pcname" 2>/dev/null || true)"
   set +e
-  # use c++ as linker to match your build toolchain
+  # shellcheck disable=SC2086
   "$cxx" -std=c++17 $cflags -o "$tmp.out" "$tmp.c" $libs >/dev/null 2>&1
   rc=$?
   set -e
@@ -331,7 +325,51 @@ EOF
   return "$rc"
 }
 
-need_deps(){
+detect_lua_flags(){
+  cxx="$1"
+  pcbin="$2"
+
+  LUA_CFLAGS=""; LUA_LIBS=""; LUA_PCNAME=""
+
+  # 1) Prefer pkg-config if available
+  if [ -n "$pcbin" ]; then
+    pcname="$(lua_pc_pick "$pcbin" 2>/dev/null || true)"
+    if [ -n "$pcname" ]; then
+      cflags="$("$pcbin" --cflags "$pcname" 2>/dev/null || true)"
+      libs="$("$pcbin" --libs "$pcname" 2>/dev/null || true)"
+      if lua_try_compile "$cxx" "$cflags" "$libs"; then
+        LUA_PCNAME="$pcname"
+        LUA_CFLAGS="$cflags"
+        LUA_LIBS="$libs"
+        return 0
+      fi
+    fi
+  fi
+
+  # 2) Fallback: common include/lib combos (for systems without pkg-config .pc files)
+  for inc in /usr/include/lua5.4 /usr/local/include/lua5.4 \
+             /usr/include/lua54 /usr/local/include/lua54 \
+             /usr/include/lua /usr/local/include/lua; do
+    [ -d "$inc" ] || continue
+    for lib in lua5.4 lua54 lua; do
+      # try with and without -ldl (macOS doesn’t have libdl)
+      if lua_try_compile "$cxx" "-I$inc" "-l$lib -lm"; then
+        LUA_CFLAGS="-I$inc"
+        LUA_LIBS="-l$lib -lm"
+        return 0
+      fi
+      if lua_try_compile "$cxx" "-I$inc" "-l$lib -lm -ldl"; then
+        LUA_CFLAGS="-I$inc"
+        LUA_LIBS="-l$lib -lm -ldl"
+        return 0
+      fi
+    done
+  done
+
+  return 1
+}
+
+deps_missing(){
   MAKE_BIN="$1"
   CXX_BIN="$2"
   PC_BIN="$3"
@@ -339,84 +377,88 @@ need_deps(){
   have "$MAKE_BIN" || return 0
   [ -n "$CXX_BIN" ] || return 0
   cxx_test "$CXX_BIN" || return 0
-  [ -n "$PC_BIN" ] || return 0
 
-  pcname="$(lua_pc_name "$PC_BIN" 2>/dev/null || true)"
-  [ -n "$pcname" ] || return 0
-  lua_dev_test "$CXX_BIN" "$PC_BIN" "$pcname" || return 0
-
+  detect_lua_flags "$CXX_BIN" "$PC_BIN" || return 0
   return 1
 }
 
 # -----------------------------
-# Install dependencies (more managers, more fallbacks)
+# Install dependencies
 # -----------------------------
 install_deps(){
   info "Installing dependencies via: $PKG"
   case "$PKG" in
     apk)
-      run_root "apk: build tools" "apk add --no-cache --update-cache build-base"
-      run_root "apk: pkgconf"     "apk add --no-cache --update-cache pkgconf || true"
-      run_root "apk: lua dev"     "apk add --no-cache --update-cache lua-dev || apk add --no-cache --update-cache lua5.4-dev || apk add --no-cache --update-cache lua5.3-dev"
+      run_root "apk: build tools" apk add --no-cache --update-cache build-base || true
+      run_root "apk: pkgconf"     apk add --no-cache --update-cache pkgconf || true
+      run_root "apk: lua dev"     apk add --no-cache --update-cache lua5.4-dev lua5.4 || \
+                                  apk add --no-cache --update-cache lua-dev lua || \
+                                  apk add --no-cache --update-cache lua5.3-dev lua5.3 || true
       ;;
     apt)
-      run_root "apt: update index" "sh -c 'apt-get update -y || apt update -y'"
-      run_root "apt: build tools"  "sh -c 'apt-get install -y build-essential pkg-config || apt install -y build-essential pkg-config'"
-      run_root "apt: lua dev"      "sh -c 'apt-get install -y lua5.4 liblua5.4-dev || apt-get install -y lua5.3 liblua5.3-dev || apt-get install -y lua5.2 liblua5.2-dev || true'"
+      run_root "apt: update index" sh -c "apt-get update -y || apt update -y" || true
+      run_root "apt: build tools"  sh -c "apt-get install -y build-essential || apt install -y build-essential" || true
+      run_root "apt: pkg-config"   sh -c "apt-get install -y pkg-config || apt install -y pkg-config" || true
+      run_root "apt: lua dev"      sh -c "apt-get install -y liblua5.4-dev lua5.4 || apt-get install -y liblua5.3-dev lua5.3 || apt-get install -y liblua5.2-dev lua5.2 || true" || true
       ;;
     dnf)
-      run_root "dnf: build tools" "dnf -y install make gcc gcc-c++ || true"
-      run_root "dnf: pkg-config"  "dnf -y install pkgconf-pkg-config pkgconfig || true"
-      run_root "dnf: lua dev"     "dnf -y install lua lua-devel || true"
+      run_root "dnf: build tools" dnf -y install make gcc gcc-c++ || true
+      run_root "dnf: pkg-config"  dnf -y install pkgconf-pkg-config pkgconfig pkgconf || true
+      run_root "dnf: lua dev"     dnf -y install lua lua-devel || true
       ;;
     yum)
-      run_root "yum: build tools" "yum -y install make gcc gcc-c++ || true"
-      run_root "yum: pkg-config"  "yum -y install pkgconf-pkg-config pkgconfig || true"
-      run_root "yum: lua dev"     "yum -y install lua lua-devel || true"
+      run_root "yum: build tools" yum -y install make gcc gcc-c++ || true
+      run_root "yum: pkg-config"  yum -y install pkgconf-pkg-config pkgconfig pkgconf || true
+      run_root "yum: lua dev"     yum -y install lua lua-devel || true
       ;;
     pacman)
-      run_root "pacman: sync"     "pacman -Sy --noconfirm"
-      run_root "pacman: deps"     "pacman -S --needed --noconfirm base-devel pkgconf lua"
+      run_root "pacman: sync" pacman -Sy --noconfirm || true
+      run_root "pacman: deps" pacman -S --needed --noconfirm base-devel pkgconf lua || true
       ;;
     zypper)
-      run_root "zypper: refresh"  "zypper -n refresh || true"
-      run_root "zypper: deps"     "zypper -n install make gcc-c++ pkgconf pkg-config || true"
-      run_root "zypper: lua dev"  "zypper -n install lua-devel lua54-devel lua || true"
+      run_root "zypper: refresh" zypper -n refresh || true
+      run_root "zypper: build tools" zypper -n install make gcc-c++ || true
+      run_root "zypper: pkg-config"  zypper -n install pkgconf pkg-config || true
+      run_root "zypper: lua dev"     zypper -n install lua54-devel lua-devel lua || true
       ;;
     xbps-install)
-      run_root "xbps: sync"       "xbps-install -Sy || true"
-      run_root "xbps: build tools" "xbps-install -y base-devel || xbps-install -y gcc make binutils"
-      run_root "xbps: pkg-config"  "xbps-install -y pkg-config || xbps-install -y pkgconf || true"
-      run_root "xbps: lua dev"     "xbps-install -y lua54 lua54-devel || xbps-install -y lua lua-devel || true"
+      run_root "xbps: sync" xbps-install -Sy || true
+      run_root "xbps: build tools" xbps-install -y base-devel || xbps-install -y gcc make binutils || true
+      run_root "xbps: pkg-config"  xbps-install -y pkg-config || xbps-install -y pkgconf || true
+      run_root "xbps: lua dev"     xbps-install -y lua54 lua54-devel || xbps-install -y lua lua-devel || true
       ;;
     eopkg)
-      run_root "eopkg: system.devel" "eopkg -y it -c system.devel || eopkg -y it make gcc binutils"
-      run_root "eopkg: pkg-config"   "eopkg -y it pkg-config || true"
-      run_root "eopkg: lua dev"      "eopkg -y it lua-devel || eopkg -y it lua || true"
+      run_root "eopkg: system.devel" eopkg -y it -c system.devel || eopkg -y it make gcc binutils || true
+      run_root "eopkg: pkg-config"   eopkg -y it pkg-config || true
+      run_root "eopkg: lua dev"      eopkg -y it lua-devel || eopkg -y it lua || true
       ;;
     emerge)
       warn "Gentoo: this may be interactive depending on your setup."
-      run_root "emerge: toolchain" "emerge --quiet-build=y --oneshot sys-devel/make dev-util/pkgconf || true"
-      run_root "emerge: lua"       "emerge --quiet-build=y --oneshot dev-lang/lua || true"
+      # Correct Gentoo atoms:
+      # - make         => dev-build/make  (your log failed because it tried sys-devel/make)
+      # - pkg-config   => dev-util/pkgconf (pkg-config compatible) / virtual/pkgconfig
+      # - lua          => dev-lang/lua
+      run_root "emerge: base tools" emerge --quiet-build=y --oneshot dev-build/make dev-util/pkgconf virtual/pkgconfig || true
+      run_root "emerge: lua"        emerge --quiet-build=y --oneshot dev-lang/lua || true
       ;;
     pkg)
-      run_root "pkg: update"       "pkg update -f || true"
-      run_root "pkg: deps"         "pkg install -y gmake pkgconf lua54 || pkg install -y gmake pkgconf lua53 || pkg install -y gmake pkgconf lua"
+      run_root "pkg: update" pkg update -f || true
+      run_root "pkg: deps"   pkg install -y gmake pkgconf lua54 || pkg install -y gmake pkgconf lua53 || pkg install -y gmake pkgconf lua || true
       ;;
     pkg_add)
       warn "OpenBSD: you may need PKG_PATH set (see pkg_add(1))."
-      run_root "pkg_add: deps"     "pkg_add gmake pkgconf lua || pkg_add gmake pkgconf lua%5.4 || true"
+      run_root "pkg_add: deps" pkg_add gmake pkgconf lua%5.4 || pkg_add gmake pkgconf lua || true
       ;;
     pkgin)
-      run_root "pkgin: update"     "pkgin -y update || true"
-      run_root "pkgin: deps"       "pkgin -y install gmake pkgconf lua54 || pkgin -y install gmake pkgconf lua || true"
+      run_root "pkgin: update" pkgin -y update || true
+      run_root "pkgin: deps"   pkgin -y install gmake pkgconf lua54 || pkgin -y install gmake pkgconf lua || true
       ;;
     brew)
-      spinner "brew: deps" "brew install make pkg-config lua || true"
+      spinner "brew: deps" brew install make pkg-config lua || true
       ;;
     port)
-      run_root "macports: selfupdate" "port selfupdate || true"
-      run_root "macports: deps"       "port install gmake pkgconfig lua || true"
+      run_root "macports: selfupdate" port selfupdate || true
+      run_root "macports: deps"       port install gmake pkgconfig lua || true
       ;;
     nix)
       warn "Nix: using a temporary build environment (no system changes)."
@@ -425,7 +467,7 @@ install_deps(){
       warn "Guix: using a temporary build environment (no system changes)."
       ;;
     *)
-      die "Unsupported/undetected package manager. Install: make, a C++17 compiler, pkg-config, and Lua dev headers/libs."
+      die "Unsupported/undetected package manager. Install: make, a C++17 compiler, and Lua dev headers/libs."
       ;;
   esac
 }
@@ -463,7 +505,7 @@ say "Log: $LOG"
 
 MAKE_BIN="$(choose_make)"
 CXX_BIN="$(choose_cxx)"
-PC_BIN="$(pkg_config_bin 2>/dev/null || true)"
+PC_BIN="$(choose_pc)"
 
 info "Detected:"
 say "  make: ${MAKE_BIN}"
@@ -474,12 +516,12 @@ say "  prefix: ${TARGET_PREFIX}"
 
 auth_once
 
-# Nix/Guix path: build inside ephemeral env
+# Nix/Guix: ephemeral env build
 if [ "$PKG" = "nix" ]; then
   [ "$INSTALL_DEPS" -eq 1 ] || die "Nix detected but --no-deps set. Use nix-shell manually."
   info "Building in nix-shell..."
-  spinner "nix-shell: build + install" \
-    "nix-shell -p gnumake gcc pkg-config lua --run 'CXX=${CXX_BIN:-c++} ${MAKE_BIN} && ${MAKE_BIN} PREFIX=${TARGET_PREFIX} install'"
+  spinner "nix-shell: build + install" nix-shell -p gnumake gcc pkg-config lua --run \
+    "make && make PREFIX='$TARGET_PREFIX' install"
   ok "$APP_NAME installed to: $TARGET_PREFIX/bin/$APP_NAME"
   exit 0
 fi
@@ -487,18 +529,18 @@ fi
 if [ "$PKG" = "guix" ]; then
   [ "$INSTALL_DEPS" -eq 1 ] || die "Guix detected but --no-deps set. Use guix shell manually."
   info "Building in guix shell..."
-  spinner "guix: build + install" \
-    "guix shell gnu-make gcc-toolchain pkg-config lua -- ${MAKE_BIN} CXX=${CXX_BIN:-c++} && ${MAKE_BIN} PREFIX=${TARGET_PREFIX} install"
+  spinner "guix: build + install" guix shell gnu-make gcc-toolchain pkg-config lua -- \
+    make && make PREFIX="$TARGET_PREFIX" install
   ok "$APP_NAME installed to: $TARGET_PREFIX/bin/$APP_NAME"
   exit 0
 fi
 
 # Deps
-if need_deps "$MAKE_BIN" "$CXX_BIN" "$PC_BIN"; then
+if deps_missing "$MAKE_BIN" "$CXX_BIN" "$PC_BIN"; then
   if [ "$INSTALL_DEPS" -eq 1 ]; then
     install_deps
   else
-    die "Missing deps and --no-deps set. Install: make, C++17 compiler, pkg-config, Lua dev headers/libs."
+    die "Missing deps and --no-deps set. Install: make, C++17 compiler, and Lua dev headers/libs."
   fi
 fi
 
@@ -507,33 +549,39 @@ if [ "$DEPS_ONLY" -eq 1 ]; then
   exit 0
 fi
 
-# Re-check after install
+# Re-check after deps install
 MAKE_BIN="$(choose_make)"
 CXX_BIN="$(choose_cxx)"
-PC_BIN="$(pkg_config_bin 2>/dev/null || true)"
-need_deps "$MAKE_BIN" "$CXX_BIN" "$PC_BIN" && die "Deps still missing after install. Check the log."
+PC_BIN="$(choose_pc)"
+deps_missing "$MAKE_BIN" "$CXX_BIN" "$PC_BIN" && die "Deps still missing after install. Check the log."
 
-pcname="$(lua_pc_name "$PC_BIN" 2>/dev/null || true)"
-[ -n "$pcname" ] || warn "Lua pkg-config entry not found (build may fail if Makefile needs it)."
-[ -n "$pcname" ] && ok "Lua dev found via pkg-config: $pcname"
+if [ -n "$LUA_PCNAME" ]; then
+  ok "Lua dev found via pkg-config: $LUA_PCNAME"
+else
+  ok "Lua dev found (fallback detection)"
+fi
 
-# Build
+# Build (pass detected Lua flags into make vars; your Makefile supports overriding LUA_CFLAGS/LUA_LIBS)
 info "Building..."
-spinner "make" "CXX='$CXX_BIN' $MAKE_BIN" || die "Build failed."
+spinner "make" "$MAKE_BIN" CXX="$CXX_BIN" LUA_CFLAGS="$LUA_CFLAGS" LUA_LIBS="$LUA_LIBS" || die "Build failed."
 
 # Install
 info "Installing..."
 if [ "$(id -u)" -eq 0 ] || [ "$TARGET_PREFIX" = "$USER_PREFIX" ] || [ -z "$SUDO" ]; then
-  spinner "make install" "$MAKE_BIN PREFIX='$TARGET_PREFIX' install" || die "Install failed."
+  spinner "make install" "$MAKE_BIN" PREFIX="$TARGET_PREFIX" install || die "Install failed."
 else
-  run_root "make install" "$MAKE_BIN PREFIX='$TARGET_PREFIX' install" || die "Install failed."
+  run_root "make install" "$MAKE_BIN" PREFIX="$TARGET_PREFIX" install || die "Install failed."
 fi
 
 # Strip
 if [ "$DO_STRIP" -eq 1 ] && have strip; then
   BIN="${TARGET_PREFIX}/bin/${APP_NAME}"
   if [ -e "$BIN" ]; then
-    spinner "strip" "${SUDO:+$SUDO }strip '$BIN' 2>/dev/null || true"
+    if [ "$(id -u)" -eq 0 ] || [ "$TARGET_PREFIX" = "$USER_PREFIX" ] || [ -z "$SUDO" ]; then
+      spinner "strip" strip "$BIN" || true
+    else
+      run_root "strip" strip "$BIN" || true
+    fi
   fi
 fi
 
@@ -542,18 +590,18 @@ if [ "$INSTALL_MAN" -eq 1 ]; then
   if [ -f "./${APP_NAME}.1" ]; then
     MAN_DIR="${TARGET_PREFIX}/share/man/man1"
     if [ "$(id -u)" -eq 0 ] || [ -z "$SUDO" ] || [ "$TARGET_PREFIX" = "$USER_PREFIX" ]; then
-      spinner "man page" "mkdir -p '$MAN_DIR' && install -m 0644 './${APP_NAME}.1' '$MAN_DIR/${APP_NAME}.1'"
-      have gzip && spinner "gzip man" "gzip -f -9 '$MAN_DIR/${APP_NAME}.1' 2>/dev/null || true"
+      spinner "man page" sh -c "mkdir -p '$MAN_DIR' && install -m 0644 './${APP_NAME}.1' '$MAN_DIR/${APP_NAME}.1'" || true
+      have gzip && spinner "gzip man" gzip -f -9 "$MAN_DIR/${APP_NAME}.1" || true
     else
-      run_root "man page" "mkdir -p '$MAN_DIR' && install -m 0644 './${APP_NAME}.1' '$MAN_DIR/${APP_NAME}.1'"
-      have gzip && run_root "gzip man" "gzip -f -9 '$MAN_DIR/${APP_NAME}.1' 2>/dev/null || true"
+      run_root "man page" sh -c "mkdir -p '$MAN_DIR' && install -m 0644 './${APP_NAME}.1' '$MAN_DIR/${APP_NAME}.1'" || true
+      have gzip && run_root "gzip man" gzip -f -9 "$MAN_DIR/${APP_NAME}.1" || true
     fi
   else
     warn "No man page found, skipping."
   fi
 fi
 
-# PATH update
+# PATH update (only if user prefix bin isn't already in PATH)
 if [ "$UPDATE_PATH" -eq 1 ]; then
   BIN_DIR="${TARGET_PREFIX}/bin"
   if ! printf "%s" ":$PATH:" | grep -q ":$BIN_DIR:"; then
