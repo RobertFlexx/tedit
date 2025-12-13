@@ -1,5 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
-#define TEDIT_VERSION "2.0.1"
+#define TEDIT_VERSION "2.1.0"
 #include <algorithm>
 #include <cerrno>
 #include <cctype>
@@ -46,7 +46,7 @@ static int l_tedit_command(lua_State* L);
 static int l_tedit_print(lua_State* L);
 
 /* ------------------------------------------------------------------ */
-/*               SECURE HELPERS (NEW / HARDENED)                      */
+/* Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
 static inline bool is_tty_stdout() {
@@ -146,7 +146,7 @@ static string tedit_themes_dir(){
 }
 
 /* ------------------------------------------------------------------ */
-/*                         ANSI / THEMES                              */
+/* ANSI / THEMES                                                      */
 /* ------------------------------------------------------------------ */
 static bool use_color(){
     return is_tty_stdout();
@@ -371,7 +371,7 @@ static bool load_theme_from_lua_file(const string& name, ThemePalette& outP){
 }
 
 /* ------------------------------------------------------------------ */
-/*                              Helpers                               */
+/* Helpers                                                            */
 /* ------------------------------------------------------------------ */
 static inline string trim_copy(const string& s){
     size_t i=0,j=s.size();
@@ -398,7 +398,7 @@ static inline bool parse_long(const string& s, long& out){
 static inline int digits_for(size_t n){ int w=1; while(n>=10){ n/=10; w++; } return w; }
 
 /* ------------------------------------------------------------------ */
-/*                        Line storage / Buffer                       */
+/* Line storage / Buffer                                               */
 /* ------------------------------------------------------------------ */
 
 struct Buffer{
@@ -423,7 +423,7 @@ struct Stack{
 };
 
 /* ------------------------------------------------------------------ */
-/*                      File I/O (Hardened)                           */
+/* File I/O (Hardened)                                                */
 /* ------------------------------------------------------------------ */
 static void load_file(const string& path, Buffer& b){
     b.lines.clear();
@@ -528,7 +528,7 @@ static bool atomic_save(const string& path, const Buffer& b, bool backup, string
 }
 
 /* ------------------------------------------------------------------ */
-/*                   Auto-recover (kept from old)                     */
+/* Auto-recover (kept from old)                                       */
 /* ------------------------------------------------------------------ */
 static string recover_path_for(const Buffer& b){
     string p = b.path.empty()? ".unnamed" : b.path;
@@ -556,11 +556,11 @@ static bool maybe_recover(Buffer& b){
     std::ifstream in(rp); if(!in.good()) return false;
     b.lines.clear(); string L; while(std::getline(in,L)){ rstrip_newline(L); b.lines.push_back(L); }
     b.dirty=true;
-    return true;
+    return true; // i really like c++ guys
 }
 
 /* ------------------------------------------------------------------ */
-/*                     Range parsing (hardened)                       */
+/* Range parsing (hardened)                                           */
 /* ------------------------------------------------------------------ */
 static bool parse_range(const string& arg, size_t nlines, size_t& out_lo, size_t& out_hi){
     auto norm_token = [&](string t)->string{
@@ -591,7 +591,7 @@ static bool parse_range(const string& arg, size_t nlines, size_t& out_lo, size_t
 }
 
 /* ------------------------------------------------------------------ */
-/*                   Search / Replace (same)                          */
+/* Search / Replace (same)                                            */
 /* ------------------------------------------------------------------ */
 static size_t search_plain_allhits(const Buffer& b, const string& q, bool icase, vector<size_t>& out_lines){
     out_lines.clear();
@@ -643,7 +643,7 @@ static int replace_all_line(const string& s,const string& needle,const string& r
 }
 
 /* ------------------------------------------------------------------ */
-/*                 SECURE FILTER (this was the big one)               */
+/* Secure filter                                                      */
 /* ------------------------------------------------------------------ */
 static bool run_filter_replace(vector<string>& lines, size_t lo, size_t hi, const string& shcmd, string &err){
     if (lo < 1 || hi < lo || hi > lines.size()) {
@@ -724,7 +724,7 @@ static bool run_filter_replace(vector<string>& lines, size_t lo, size_t hi, cons
 }
 
 /* ------------------------------------------------------------------ */
-/*           Directory listing — mildly hardened                      */
+/* Directory listing                                                  */
 /* ------------------------------------------------------------------ */
 static string perm_string(mode_t m){
     const char* t = S_ISDIR(m) ? "d" : "-";
@@ -793,7 +793,7 @@ static void ls_list(const string& path, bool all, bool longfmt){
 }
 
 /* ------------------------------------------------------------------ */
-/*             Highlight (keep but slightly guarded)                  */
+/* Highlight (keep but slightly guarded)                              */
 /* ------------------------------------------------------------------ */
 enum class Lang { Plain, Cpp, Python, Shell, Ruby, JS, HTML, CSS, JSON };
 
@@ -877,7 +877,7 @@ static string colorize_lang(const string& L, const Buffer& b, const ThemePalette
 }
 
 /* ------------------------------------------------------------------ */
-/*               Terminal width & wrapped printing                    */
+/* Terminal width & wrapped printing                                  */
 /* ------------------------------------------------------------------ */
 static int term_width(){
 #if defined(__unix__) || defined(__APPLE__)
@@ -927,7 +927,7 @@ static void print_wrapped_with_gutter(const string& ansi,
 }
 
 /* ------------------------------------------------------------------ */
-/*                     Interactive line input                         */
+/* Interactive line input                                             */
 /* ------------------------------------------------------------------ */
 struct LineReader{
     vector<string> history; size_t HIST_MAX=800;
@@ -1122,7 +1122,7 @@ struct LineReader{
 };
 
 /* ------------------------------------------------------------------ */
-/*                               Editor                               */
+/* Editor                                                             */
 /* ------------------------------------------------------------------ */
 struct Editor{
     Buffer buf; Stack undo, redo; LineReader lr;
@@ -1153,7 +1153,7 @@ struct Editor{
         g_editor = this;
         lr.commands = {
             "help","open","info","write","w","wq","saveas","quit","q","print","p","r",
-            "append","a","insert","i","delete","d","move","m","join","find","findi","findre",
+            "append","a","insert","i","edit","delete","d","move","m","join","find","findi","findre",
             "repl","replg","read","undo","u","redo","set","filter","ls","pwd","number",
             "goto","n","N","new","bnext","bprev","lsb","theme","highlight","alias","diff",
             "cd","clear","version","lua","luafile","run-plugin","plugins","reload-plugins",
@@ -1471,6 +1471,7 @@ struct Editor{
         CMD("r <n>",                  "", "show one line");
         CMD("a|append",               "", "append lines ('.' ends; use \".\" for a literal)");
         CMD("i|insert <n>",           "", "insert before line n");
+        CMD("edit <n> [text...]",     "", "replace line n (prompts if no text)");
         CMD("d|delete [range]",       "", "delete lines");
         CMD("m|move <from> <to>",     "", "move line");
         CMD("join <range>",           "", "join lines with space");
@@ -1715,6 +1716,7 @@ struct Editor{
         auto back = others.back(); others.pop_back();
         others.insert(others.begin(), buf);
         buf = back;
+        others.pop_back();
         lang = detect_lang(buf.path);
         cout<<"[bprev] "<<(buf.path.empty()? "(unnamed)":buf.path)<<"\n";
     }
@@ -1812,6 +1814,47 @@ struct Editor{
             long n=0; if(!parse_long(rest,n)){ cout<<P.warn<<"usage: insert <n>"<<C_RESET<<"\n"; return true; }
             if(n<1 || (size_t)n>buf.lines.size()+1){ cout<<P.warn<<"invalid target line"<<C_RESET<<"\n"; return true; }
             push_undo(); insert_mode((size_t)n-1); buf.dirty=true; return true;
+        }
+
+        if(lc=="edit"){
+            std::istringstream ts(rest);
+            string ntok; ts>>ntok;
+            long n=0;
+            if(ntok.empty() || !parse_long(ntok, n)){
+                cout<<P.warn<<"usage: edit <n> [text...]"<<C_RESET<<"\n";
+                return true;
+            }
+            if(n<1 || (size_t)n>buf.lines.size()){
+                cout<<P.warn<<"no such line"<<C_RESET<<"\n";
+                return true;
+            }
+
+            string after;
+            std::getline(ts, after);
+
+            if(after.empty()){
+                cout<<"old: "<<buf.lines[(size_t)n-1]<<"\n";
+                cout<<"new> "<<std::flush;
+                string newline;
+                if(!std::getline(std::cin, newline)){
+                    cout<<"\n";
+                    return true;
+                }
+                push_undo();
+                buf.lines[(size_t)n-1] = newline;
+                buf.dirty = true;
+                cout<<"edited line "<<n<<"\n";
+                return true;
+            }
+
+            /* strip the single separator space/tab but preserve real indentation */
+            if(!after.empty() && (after[0]==' ' || after[0]=='\t')) after.erase(after.begin());
+
+            push_undo();
+            buf.lines[(size_t)n-1] = after;
+            buf.dirty = true;
+            cout<<"edited line "<<n<<"\n";
+            return true;
         }
 
         if(lc=="delete"||lc=="d"){
@@ -1962,7 +2005,7 @@ struct Editor{
             } else cout<<P.warn<<"unknown setting"<<C_RESET<<"\n";
             return true;
         }
-        // pls support my project, i werk hord :D
+
         if(lc=="number"){ buf.number = !buf.number; cout<<"number: "<<(buf.number?"on":"off")<<"\n"; save_config(); return true; }
 
         if(lc=="theme"){
@@ -2034,7 +2077,7 @@ struct Editor{
                 else cout<<P.ok<<"cd: "<<fs::current_path().string()<<C_RESET<<"\n";
                 return true;
             }
-            // whats up
+
             if(lc=="clear"){ clear_screen(); return true; }
 
             if(lc=="lua"){
@@ -2159,7 +2202,7 @@ struct Editor{
 };
 
 /* ------------------------------------------------------------------ */
-/*                      Lua bridge functions                          */
+/* Lua bridge functions                                               */
 /* ------------------------------------------------------------------ */
 
 static int l_tedit_echo(lua_State* L){
@@ -2192,7 +2235,7 @@ static int l_tedit_print(lua_State* L){
 }
 
 /* ------------------------------------------------------------------ */
-/*                               main                                 */
+/* main                                                               */
 /* ------------------------------------------------------------------ */
 int main(int argc, char** argv){
     std::ios::sync_with_stdio(false); std::cin.tie(nullptr);

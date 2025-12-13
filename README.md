@@ -3,6 +3,7 @@
 `tedit` is a mac-os safe, lightweight, command-line text editor inspired by *ed*/*ex*—with modern safety, syntax highlighting, themes, and quality-of-life extras in one fast, portable binary. Check out [this](https://github.com/Kokonico/medit)! :D
 
 > psst.. bored? have no computer power for a physics game? dont want gigabytes of bloat? want to soothe your nerves? oh boy well i got the game for you! check out my [PowderSandbox](https://github.com/RobertFlexx/Powder-Sandbox-GameHub) Family, a tree of one powder sandbox written in multiple languages! pick your fire!
+
 ---
 
 ## Highlights (What’s New & Notable)
@@ -196,6 +197,7 @@ tedit> wq
 | `q`                               | Quit (prompts if unsaved)                                                       |      |             |                |
 | `p [range]` / `r <n>`             | Print lines / show one line                                                     |      |             |                |
 | `a` / `i <n>`                     | Append / insert before line *n* (`.` alone to finish)                           |      |             |                |
+| `edit <n>`                        | Edit line *n* (`.` alone to finish)                                             |      |             |                |
 | `d [range]` / `m <from> <to>`     | Delete range / move a line                                                      |      |             |                |
 | `join [range]`                    | Join lines into one                                                             |      |             |                |
 | `find` / `findi` / `findre`       | Search (plain / case-insensitive / regex)                                       |      |             |                |
@@ -300,7 +302,7 @@ end
 
    ```lua
    -- ~/.tedit-config/themes/pink.lua
-   -- You can copy‑paste this even if you don't know Lua.
+   -- You can copy-paste this even if you don't know Lua.
    -- Save, then in tedit run:  lua-themes   and   theme pink
 
    return {
@@ -573,12 +575,5 @@ sudo sh uninstall.sh --purge --purge-repo -y
 
 ### Troubleshooting
 
-* **`Up to date.` but your local changes aren’t present?** You’re already on the latest commit. If you expected different code, check your remote/branch or run `git remote -v && git status`.
-* **Dirty tree errors?** The updater **auto-stashes** and pops after pulling. If it can’t auto-resolve, it’ll leave a stash and note it in the log.
-* **PATH still missing?** Re-open your shell or run:
+* **`Up to date.` but your local changes aren’t present?** You’re already on the latest commit. If you expected different code, check your remote/branch or run `git remote -v && git status
 
-  ```bash
-  export PATH="/usr/local/bin:$PATH"         # system
-  export PATH="$HOME/.local/bin:$PATH"       # user
-  ```
-* **Man page not found?** Some distros don’t compress/update man DB automatically. Reinstall and verify `man -w tedit`, or run `mandb`/`makewhatis` (root may be required).
