@@ -1,13 +1,7 @@
-# ============================================================================
-# tedit - Terminal Text Editor
-# Makefile
-# ============================================================================
-
-# Project info
+# project info
 PROJECT     := tedit
 VERSION     := 2.1.0
 
-# Directories
 SRC_DIR     := src
 INC_DIR     := include
 BUILD_DIR   := build
@@ -15,21 +9,19 @@ OBJ_DIR     := $(BUILD_DIR)/obj
 DEP_DIR     := $(BUILD_DIR)/dep
 BIN_DIR     := $(BUILD_DIR)/bin
 
-# Installation directories (can be overridden)
 PREFIX      ?= /usr/local
 BINDIR      ?= $(PREFIX)/bin
 MANDIR      ?= $(PREFIX)/share/man/man1
 
-# Compiler and flags
 CXX         := g++
 CXXSTD      := -std=c++17
 WARNINGS    := -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Wformat=2
 INCLUDES    := -I$(INC_DIR)
 
-# Platform detection
+# platform detection
 UNAME_S     := $(shell uname -s)
 
-# Lua configuration (try pkg-config first, fallback to defaults)
+# oua configuration (try pkg-config first, fallback to defaults)
 LUA_PKG     := $(shell pkg-config --exists lua5.4 && echo lua5.4 || \
                (pkg-config --exists lua5.3 && echo lua5.3 || \
                (pkg-config --exists lua && echo lua || echo "")))
@@ -38,7 +30,7 @@ ifneq ($(LUA_PKG),)
     LUA_CFLAGS  := $(shell pkg-config --cflags $(LUA_PKG))
     LUA_LIBS    := $(shell pkg-config --libs $(LUA_PKG))
 else
-    # Fallback for systems without pkg-config
+    # fallback for systems without pkg-config
     LUA_CFLAGS  :=
     ifeq ($(UNAME_S),Darwin)
         LUA_LIBS := -llua
@@ -47,7 +39,7 @@ else
     endif
 endif
 
-# Platform-specific flags
+# platform specific flags
 ifeq ($(UNAME_S),Darwin)
     # macOS
     PLATFORM_CFLAGS  :=
@@ -57,17 +49,14 @@ else ifeq ($(UNAME_S),Linux)
     PLATFORM_CFLAGS  :=
     PLATFORM_LDFLAGS := -Wl,--as-needed
 else
-    # Other Unix-like systems (BSD, etc.)
     PLATFORM_CFLAGS  :=
     PLATFORM_LDFLAGS :=
 endif
 
-# Build type flags
 DEBUG_FLAGS   := -g3 -O0 -DDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer
 RELEASE_FLAGS := -O2 -DNDEBUG -march=native
 PROFILE_FLAGS := -O2 -g -pg -DNDEBUG
 
-# Default build type
 BUILD_TYPE  ?= release
 
 ifeq ($(BUILD_TYPE),debug)
@@ -81,23 +70,18 @@ else
     BUILD_NAME  := release
 endif
 
-# Final flags
 CXXFLAGS    := $(CXXSTD) $(WARNINGS) $(BUILD_FLAGS) $(INCLUDES) $(LUA_CFLAGS) $(PLATFORM_CFLAGS)
 LDFLAGS     := $(BUILD_FLAGS) $(PLATFORM_LDFLAGS)
 LDLIBS      := $(LUA_LIBS)
 
-# Dependency generation flags
 DEPFLAGS     = -MT $@ -MMD -MP -MF $(DEP_DIR)/$*.d
 
-# Source files
 SOURCES     := $(wildcard $(SRC_DIR)/*.cpp)
 OBJECTS     := $(SOURCES:$(SRC_DIR)/%.cpp=$(OBJ_DIR)/%.o)
 DEPENDS     := $(SOURCES:$(SRC_DIR)/%.cpp=$(DEP_DIR)/%.d)
 
-# Target binary
 TARGET      := $(BIN_DIR)/$(PROJECT)
 
-# Colors for pretty output (disable with NOCOLOR=1)
 ifndef NOCOLOR
     COLOR_RESET  := \033[0m
     COLOR_GREEN  := \033[32m
@@ -112,37 +96,24 @@ else
     COLOR_BOLD   :=
 endif
 
-# ============================================================================
-# Targets
-# ============================================================================
-
 .PHONY: all clean distclean install uninstall debug release profile \
         help info check-deps test rebuild
 
-# Default target
 all: $(TARGET)
 	@echo "$(COLOR_GREEN)$(COLOR_BOLD)Build complete: $(TARGET) ($(BUILD_NAME))$(COLOR_RESET)"
 
-# Link the target
 $(TARGET): $(OBJECTS) | $(BIN_DIR)
 	@echo "$(COLOR_CYAN)Linking$(COLOR_RESET) $(COLOR_BOLD)$@$(COLOR_RESET)"
 	@$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-# Compile source files
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp | $(OBJ_DIR) $(DEP_DIR)
 	@echo "$(COLOR_YELLOW)Compiling$(COLOR_RESET) $<"
 	@$(CXX) $(CXXFLAGS) $(DEPFLAGS) -c -o $@ $<
 
-# Create directories
 $(BIN_DIR) $(OBJ_DIR) $(DEP_DIR):
 	@mkdir -p $@
 
-# Include dependency files
 -include $(DEPENDS)
-
-# ============================================================================
-# Build type shortcuts
-# ============================================================================
 
 debug:
 	@$(MAKE) BUILD_TYPE=debug
@@ -155,10 +126,6 @@ profile:
 
 rebuild: clean all
 
-# ============================================================================
-# Cleaning
-# ============================================================================
-
 clean:
 	@echo "$(COLOR_YELLOW)Cleaning build files...$(COLOR_RESET)"
 	@rm -rf $(BUILD_DIR)
@@ -167,10 +134,6 @@ distclean: clean
 	@echo "$(COLOR_YELLOW)Removing all generated files...$(COLOR_RESET)"
 	@rm -f $(PROJECT) core vgcore.* *.log
 	@rm -rf *.dSYM
-
-# ============================================================================
-# Installation
-# ============================================================================
 
 install: $(TARGET)
 	@echo "$(COLOR_CYAN)Installing to $(BINDIR)...$(COLOR_RESET)"
@@ -183,11 +146,6 @@ uninstall:
 	@rm -f $(DESTDIR)$(BINDIR)/$(PROJECT)
 	@echo "$(COLOR_GREEN)Uninstalled $(PROJECT)$(COLOR_RESET)"
 
-# ============================================================================
-# Development helpers
-# ============================================================================
-
-# Check dependencies are available
 check-deps:
 	@echo "$(COLOR_CYAN)Checking dependencies...$(COLOR_RESET)"
 	@command -v $(CXX) >/dev/null 2>&1 || \
@@ -201,7 +159,6 @@ endif
 	@echo "  $(COLOR_GREEN)✓$(COLOR_RESET) Platform: $(UNAME_S)"
 	@echo "$(COLOR_GREEN)All dependencies satisfied$(COLOR_RESET)"
 
-# Run a quick sanity test
 test: $(TARGET)
 	@echo "$(COLOR_CYAN)Running basic tests...$(COLOR_RESET)"
 	@echo "version" | $(TARGET) /dev/null 2>&1 | grep -q "tedit" && \
@@ -212,7 +169,6 @@ test: $(TARGET)
 		{ echo "  $(COLOR_BOLD)✗$(COLOR_RESET) Quit test failed"; exit 1; }
 	@echo "$(COLOR_GREEN)All tests passed$(COLOR_RESET)"
 
-# Show build configuration
 info:
 	@echo "$(COLOR_BOLD)tedit $(VERSION) - Build Configuration$(COLOR_RESET)"
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -237,10 +193,6 @@ info:
 	@echo ""
 	@echo "$(COLOR_CYAN)Headers:$(COLOR_RESET)"
 	@for hdr in $(wildcard $(INC_DIR)/*.hpp); do echo "  $$hdr"; done
-
-# ============================================================================
-# Help
-# ============================================================================
 
 help:
 	@echo "$(COLOR_BOLD)tedit $(VERSION) - Build System$(COLOR_RESET)"
@@ -276,16 +228,9 @@ help:
 	@echo "  make install PREFIX=~   # Install to home directory"
 	@echo "  make CXX=clang++        # Use Clang compiler"
 
-# ============================================================================
-# Special targets
-# ============================================================================
-
-# Prevent make from deleting intermediate files
 .SECONDARY: $(OBJECTS)
 
-# Don't use built-in rules
 .SUFFIXES:
 
-# Targets that don't produce files with their name
 .PHONY: all clean distclean install uninstall debug release profile \
         help info check-deps test rebuild
