@@ -1,0 +1,124 @@
+\033[36mLinking\033[0m \033[1mbuild/bin/tedit\033[0m
+/usr/bin/ld: build/obj/editor.o: warning: relocation against `_ZL12l_tedit_echoP9lua_State' in read-only section `.text'
+/usr/bin/ld: build/obj/editor.o: in function `Editor::cfg_path[abi:cxx11]() const':
+editor.cpp:(.text+0x244e): undefined reference to `tedit_config_dir()'
+/usr/bin/ld: build/obj/editor.o: in function `Editor::confetti()':
+editor.cpp:(.text+0x2949): undefined reference to `use_color()'
+/usr/bin/ld: build/obj/editor.o: in function `Editor::load(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)':
+editor.cpp:(.text+0x2cf6): undefined reference to `load_file(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, Buffer&)'
+/usr/bin/ld: editor.cpp:(.text+0x2cfe): undefined reference to `detect_lang(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)'
+/usr/bin/ld: build/obj/editor.o: in function `Editor::run_hook(char const*)':
+editor.cpp:(.text+0x2db4): undefined reference to `home_path()'
+/usr/bin/ld: editor.cpp:(.text+0x2e85): undefined reference to `file_exists(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)'
+/usr/bin/ld: editor.cpp:(.text+0x2eb1): undefined reference to `sh_escape(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)'
+/usr/bin/ld: editor.cpp:(.text+0x2f97): undefined reference to `sh_escape(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)'
+/usr/bin/ld: editor.cpp:(.text+0x3061): undefined reference to `run_shell_cmd(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)'
+/usr/bin/ld: build/obj/editor.o: in function `Editor::gutter_width() const':
+editor.cpp:(.text+0x3403): undefined reference to `digits_for(unsigned long)'
+/usr/bin/ld: build/obj/editor.o: in function `Editor::repl(bool, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)':
+editor.cpp:(.text+0x3519): undefined reference to `replace_all_line(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >&)'
+/usr/bin/ld: editor.cpp:(.text+0x356b): undefined reference to `replace_first_line(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >&)'
+/usr/bin/ld: build/obj/editor.o: in function `Editor::show_diff()':
+editor.cpp:(.text+0x36cf): undefined reference to `file_exists(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)'
+/usr/bin/ld: editor.cpp:(.text+0x37a1): undefined reference to `atomic_save_to_fd(_IO_FILE*, Buffer const&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >&)'
+/usr/bin/ld: editor.cpp:(.text+0x37de): undefined reference to `sh_escape(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)'
+/usr/bin/ld: editor.cpp:(.text+0x37f6): undefined reference to `sh_escape(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)'
+/usr/bin/ld: editor.cpp:(.text+0x3a36): undefined reference to `sh_escape(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)'
+/usr/bin/ld: editor.cpp:(.text+0x3a82): undefined reference to `run_shell_cmd(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)'
+/usr/bin/ld: build/obj/editor.o: in function `Editor::parse_bool_string(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, bool&)':
+editor.cpp:(.text+0x3ca7): undefined reference to `trim_copy(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)'
+/usr/bin/ld: editor.cpp:(.text+0x3cb4): undefined reference to `lower(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >)'
+/usr/bin/ld: build/obj/editor.o: in function `Editor::print_line(unsigned long)':
+editor.cpp:(.text+0x5eb6): undefined reference to `term_width()'
+/usr/bin/ld: editor.cpp:(.text+0x5edc): undefined reference to `digits_for(unsigned long)'
+/usr/bin/ld: editor.cpp:(.text+0x6274): undefined reference to `colorize_lang(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, Buffer const&, ThemePalette const&, Lang)'
+/usr/bin/ld: editor.cpp:(.text+0x677a): undefined reference to `print_wrapped_with_gutter(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, int)'
+/usr/bin/ld: build/obj/editor.o: in function `Editor::next_match(bool)':
+editor.cpp:(.text+0x698f): undefined reference to `search_plain_allhits(Buffer const&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, bool, std::vector<unsigned long, std::allocator<unsigned long> >&)'
+/usr/bin/ld: build/obj/editor.o: in function `Editor::theme_from_name(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, Theme&)':
+editor.cpp:(.text+0x6b7f): undefined reference to `lower(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >)'
+/usr/bin/ld: build/obj/editor.o: in function `Editor::status()':
+editor.cpp:(.text+0x6e9f): undefined reference to `char_count(Buffer const&)'
+/usr/bin/ld: build/obj/editor.o: in function `Editor::info()':
+editor.cpp:(.text+0x721c): undefined reference to `char_count(Buffer const&)'
+/usr/bin/ld: build/obj/editor.o: in function `Editor::save(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)':
+editor.cpp:(.text+0x7742): undefined reference to `atomic_save(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, Buffer const&, bool, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >&)'
+/usr/bin/ld: editor.cpp:(.text+0x77fa): undefined reference to `recover_path_for(Buffer const&)'
+/usr/bin/ld: build/obj/editor.o: in function `Editor::prompt_str[abi:cxx11]() const':
+editor.cpp:(.text+0x7974): undefined reference to `use_color()'
+/usr/bin/ld: editor.cpp:(.text+0x79b1): undefined reference to `use_color()'
+/usr/bin/ld: build/obj/editor.o: in function `Editor::expand_path(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)':
+editor.cpp:(.text+0x7e89): undefined reference to `home_path()'
+/usr/bin/ld: editor.cpp:(.text+0x7ec2): undefined reference to `home_path()'
+/usr/bin/ld: build/obj/editor.o: in function `Editor::cycle_theme(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)':
+editor.cpp:(.text+0x8831): undefined reference to `load_theme_from_lua_file(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, ThemePalette&)'
+/usr/bin/ld: editor.cpp:(.text+0x88f6): undefined reference to `palette_for(Theme)'
+/usr/bin/ld: build/obj/editor.o: in function `Editor::banner()':
+editor.cpp:(.text+0x8c62): undefined reference to `home_path()'
+/usr/bin/ld: editor.cpp:(.text+0x8d02): undefined reference to `file_exists(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)'
+/usr/bin/ld: build/obj/editor.o: in function `Editor::load_config()':
+editor.cpp:(.text+0x9606): undefined reference to `trim_copy(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)'
+/usr/bin/ld: editor.cpp:(.text+0x9620): undefined reference to `lower(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >)'
+/usr/bin/ld: editor.cpp:(.text+0x969c): undefined reference to `trim_copy(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)'
+/usr/bin/ld: editor.cpp:(.text+0x9902): undefined reference to `palette_for(Theme)'
+/usr/bin/ld: editor.cpp:(.text+0x9b34): undefined reference to `parse_long(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, long&)'
+/usr/bin/ld: editor.cpp:(.text+0x9d8b): undefined reference to `load_theme_from_lua_file(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, ThemePalette&)'
+/usr/bin/ld: build/obj/editor.o: in function `Editor::load_lua_plugins()':
+editor.cpp:(.text+0xa2b8): undefined reference to `tedit_plugins_dir()'
+/usr/bin/ld: build/obj/editor.o: in function `Editor::init_lua() [clone .part.0]':
+editor.cpp:(.text+0xad6d): undefined reference to `l_tedit_command(lua_State*)'
+/usr/bin/ld: editor.cpp:(.text+0xad95): undefined reference to `l_tedit_echo(lua_State*)'
+/usr/bin/ld: editor.cpp:(.text+0xadbd): undefined reference to `l_tedit_print(lua_State*)'
+/usr/bin/ld: build/obj/editor.o: in function `Editor::list_lua_themes()':
+editor.cpp:(.text+0xcb36): undefined reference to `tedit_themes_dir()'
+/usr/bin/ld: editor.cpp:(.text+0xcec1): undefined reference to `lower(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >)'
+/usr/bin/ld: editor.cpp:(.text+0xcefa): undefined reference to `lower(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >)'
+/usr/bin/ld: build/obj/editor.o: in function `Editor::Editor()':
+editor.cpp:(.text+0xda43): undefined reference to `palette_for(Theme)'
+/usr/bin/ld: build/obj/editor.o: in function `Editor::open_new_buffer(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)':
+editor.cpp:(.text+0xe6f1): undefined reference to `detect_lang(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)'
+/usr/bin/ld: editor.cpp:(.text+0xe867): undefined reference to `load_file(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, Buffer&)'
+/usr/bin/ld: editor.cpp:(.text+0xe86f): undefined reference to `maybe_recover(Buffer&)'
+/usr/bin/ld: build/obj/editor.o: in function `Editor::bnext()':
+editor.cpp:(.text+0xecaa): undefined reference to `detect_lang(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)'
+/usr/bin/ld: build/obj/editor.o: in function `Editor::bprev()':
+editor.cpp:(.text+0xef9c): undefined reference to `detect_lang(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)'
+/usr/bin/ld: build/obj/editor.o: in function `Editor::handle(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)':
+editor.cpp:(.text+0xf586): undefined reference to `autosave_if_needed(Buffer const&, std::chrono::time_point<std::chrono::_V2::steady_clock, std::chrono::duration<long, std::ratio<1l, 1000000000l> > >&, int)'
+/usr/bin/ld: editor.cpp:(.text+0xf596): undefined reference to `trim_copy(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)'
+/usr/bin/ld: editor.cpp:(.text+0xf82d): undefined reference to `trim_copy(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)'
+/usr/bin/ld: editor.cpp:(.text+0xf880): undefined reference to `lower(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >)'
+/usr/bin/ld: editor.cpp:(.text+0xf970): undefined reference to `trim_copy(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)'
+/usr/bin/ld: editor.cpp:(.text+0xfa6a): undefined reference to `search_plain(Buffer const&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, bool)'
+/usr/bin/ld: editor.cpp:(.text+0xfe14): undefined reference to `parse_range(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, unsigned long, unsigned long&, unsigned long&)'
+/usr/bin/ld: editor.cpp:(.text+0xfff0): undefined reference to `parse_range(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, unsigned long, unsigned long&, unsigned long&)'
+/usr/bin/ld: editor.cpp:(.text+0x10093): undefined reference to `lower(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >)'
+/usr/bin/ld: editor.cpp:(.text+0x101bb): undefined reference to `parse_long(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, long&)'
+/usr/bin/ld: editor.cpp:(.text+0x1023f): undefined reference to `parse_long(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, long&)'
+/usr/bin/ld: editor.cpp:(.text+0x102c9): undefined reference to `parse_long(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, long&)'
+/usr/bin/ld: editor.cpp:(.text+0x103e0): undefined reference to `parse_long(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, long&)'
+/usr/bin/ld: editor.cpp:(.text+0x105cb): undefined reference to `parse_range(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, unsigned long, unsigned long&, unsigned long&)'
+/usr/bin/ld: editor.cpp:(.text+0x10a9c): undefined reference to `search_plain(Buffer const&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, bool)'
+/usr/bin/ld: editor.cpp:(.text+0x10b7d): undefined reference to `search_plain(Buffer const&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, bool)'
+/usr/bin/ld: editor.cpp:(.text+0x10b8f): undefined reference to `search_regex(Buffer const&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)'
+/usr/bin/ld: editor.cpp:(.text+0x10e2f): undefined reference to `lower(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >)'
+/usr/bin/ld: editor.cpp:(.text+0x10e88): undefined reference to `lower(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >)'
+/usr/bin/ld: editor.cpp:(.text+0x11181): undefined reference to `trim_copy(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)'
+/usr/bin/ld: editor.cpp:(.text+0x111e8): undefined reference to `parse_range(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, unsigned long, unsigned long&, unsigned long&)'
+/usr/bin/ld: editor.cpp:(.text+0x1137b): undefined reference to `run_filter_replace(std::vector<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::allocator<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > >&, unsigned long, unsigned long, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >&)'
+/usr/bin/ld: editor.cpp:(.text+0x115ba): undefined reference to `parse_long(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, long&)'
+/usr/bin/ld: editor.cpp:(.text+0x118d6): undefined reference to `trim_copy(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)'
+/usr/bin/ld: editor.cpp:(.text+0x11d3e): undefined reference to `ls_list(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, bool, bool)'
+/usr/bin/ld: editor.cpp:(.text+0x12314): undefined reference to `file_exists(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)'
+/usr/bin/ld: editor.cpp:(.text+0x12dbb): undefined reference to `parse_long(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, long&)'
+/usr/bin/ld: editor.cpp:(.text+0x12f93): undefined reference to `rstrip_newline(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >&)'
+/usr/bin/ld: build/obj/editor.o: in function `Editor::load(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)':
+editor.cpp:(.text+0x2d7b): undefined reference to `maybe_recover(Buffer&)'
+/usr/bin/ld: build/obj/linereader.o: in function `LineReader::expand_home_in_token(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >)':
+linereader.cpp:(.text+0x1175): undefined reference to `home_path()'
+/usr/bin/ld: linereader.cpp:(.text+0x1228): undefined reference to `home_path()'
+/usr/bin/ld: build/obj/main.o: in function `main':
+main.cpp:(.text.startup+0x8c): undefined reference to `palette_for(Theme)'
+/usr/bin/ld: warning: creating DT_TEXTREL in a PIE
+collect2: error: ld returned 1 exit status
+make: *** [Makefile:129: build/bin/tedit] Error 1
