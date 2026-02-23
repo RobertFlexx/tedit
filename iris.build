@@ -1,0 +1,58 @@
+project "tedit" do
+    version = "2.1.0"
+    license = "BSD-3"
+    lang = :cpp
+    std = "c++17"
+end
+
+compiler do
+    warnings = ["-Wall", "-Wextra", "-Wpedantic", "-Wshadow"]
+    
+    if buildtype == "debug" do
+        flags = ["-g", "-O0", "-DDEBUG"]
+    end
+    
+    if buildtype == "release" do
+        flags = ["-O2", "-DNDEBUG"]
+    end
+    
+    if buildtype == "minsize" do
+        flags = ["-Os", "-DNDEBUG"]
+    end
+end
+
+executable "tedit" do
+    sources = [
+        "src/buffer.cpp",
+        "src/editor.cpp",
+        "src/fileio.cpp",
+        "src/filter.cpp",
+        "src/highlight.cpp",
+        "src/linereader.cpp",
+        "src/ls.cpp",
+        "src/luabridge.cpp",
+        "src/main.cpp",
+        "src/range.cpp",
+        "src/recover.cpp",
+        "src/search.cpp",
+        "src/terminal.cpp",
+        "src/theme.cpp",
+        "src/utils.cpp"
+    ]
+    includes = ["include"]
+
+    # lua dependency
+    if run("pkg-config --exists lua") == 0 do
+        flags = split(shell("pkg-config --cflags lua"), " ")
+        link_flags = split(shell("pkg-config --libs lua"), " ")
+    else if run("pkg-config --exists lua5.4") == 0 do
+        flags = split(shell("pkg-config --cflags lua5.4"), " ")
+        link_flags = split(shell("pkg-config --libs lua5.4"), " ")
+    else
+        link_flags = ["-llua"]
+    end
+
+    if platform() == "linux" do
+        link_flags += ["-ldl"]
+    end
+end
