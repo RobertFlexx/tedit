@@ -332,7 +332,7 @@ It's not a shell. It's not a TUI. It's a **command-line text editor** that stays
 
 ## License
 
-MIT License. Have fun, keep the notice, ship great things.
+BSD-3 License. Have fun, keep the notice, ship great things (pls dont screw stuff up lol)
 
 ---
 
