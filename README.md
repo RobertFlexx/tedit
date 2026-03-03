@@ -2,6 +2,8 @@
 
 `tedit` is a lightweight, fast terminal text editor for Windows—inspired by classic *ed*/*ex* with modern safety, syntax highlighting, themes, and quality-of-life extras in one portable executable.
 
+
+If you are on linux, go [here](https://github.com/RobertFlexx/tedit)
 ---
 
 ## Highlights
