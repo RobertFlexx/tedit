@@ -28,7 +28,7 @@
 ### Requirements
 
 * Windows 10 or later (for ANSI color support)
-* [.NET 8.0 SDK](https://dotnet.microsoft.com/download) (for building only)
+* [.NET 8.0 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/8.0) (for building only)
 * Internet access to restore NuGet packages (NLua, ILLink.Tasks, etc.)
 * [Lua 5.4.x](https://luabinaries.sourceforge.net/) installed and added to PATH (for plugins and Lua themes)
 
