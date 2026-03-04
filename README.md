@@ -36,7 +36,7 @@ If you are on linux, go [here](https://github.com/RobertFlexx/tedit)
 
 ```powershell
 # Clone the repo
-git clone https://github.com/YourUsername/tedit-windows
+git clone https://github.com/RobertFlexx/tedit/tree/tedit-windows
 cd tedit-windows
 
 # Build
