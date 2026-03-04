@@ -296,9 +296,10 @@ You can also use the `.bat` wrappers if PowerShell isn't your default.
 
 ### Prerequisites
 
-1. Install [.NET 8.0 SDK](https://dotnet.microsoft.com/download)
-2. Clone this repo
-3. Ensure NuGet sources are configured (`dotnet nuget add source https://api.nuget.org/v3/index.json -n nuget.org`)
+1. Install [.NET 8.0 SDK (x64 / amd64](https://dotnet.microsoft.com/en-us/download/dotnet/thank-you/sdk-8.0.418-windows-x64-installer)
+2. Install [.NET 8.0 SDK (x86 / i386)](https://dotnet.microsoft.com/en-us/download/dotnet/thank-you/sdk-8.0.418-windows-x86-installer)
+3. Clone this repo
+4. Ensure NuGet sources are configured (`dotnet nuget add source https://api.nuget.org/v3/index.json -n nuget.org`)
 
 ### Build Debug
 
