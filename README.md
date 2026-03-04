@@ -2,9 +2,7 @@
 
 `tedit` is a lightweight, fast terminal text editor for Windows—inspired by classic *ed*/*ex* with modern safety, syntax highlighting, themes, and quality-of-life extras in one portable executable.
 
-
-If you are on linux, go [here](https://github.com/RobertFlexx/tedit)
----
+## If you are on linux, go [here](https://github.com/RobertFlexx/tedit)
 
 ## Highlights
 
@@ -21,7 +19,7 @@ If you are on linux, go [here](https://github.com/RobertFlexx/tedit)
 * **Multiple buffers** — `new`, `bnext`, `bprev`, `lsb` to work with multiple files
 * **Shell filters** — Pipe ranges through PowerShell: `filter 1-20 !Sort-Object`
 * **Diff on demand** — `diff` shows changes vs on-disk file
-* **Lua plugins** — Extend functionality with simple Lua scripts
+* **Lua plugins** — Extend functionality with simple Lua scripts (requires Lua installed and in PATH)
 
 ---
 
@@ -30,7 +28,28 @@ If you are on linux, go [here](https://github.com/RobertFlexx/tedit)
 ### Requirements
 
 * Windows 10 or later (for ANSI color support)
-* .NET 8.0 SDK (for building only)
+* [.NET 8.0 SDK](https://dotnet.microsoft.com/download) (for building only)
+* Internet access to restore NuGet packages (NLua, ILLink.Tasks, etc.)
+* [Lua 5.4.x](https://luabinaries.sourceforge.net/) installed and added to PATH (for plugins and Lua themes)
+
+### Install Lua on Windows
+
+1. Download Lua 5.4.x (Win64 recommended) from [LuaBinaries](https://luabinaries.sourceforge.net/)
+2. Extract to a folder, e.g., `C:\Lua\`
+3. Add the folder to your PATH:
+
+   * Press Win+S → "Environment Variables" → Edit system environment variables → Environment Variables
+   * Under User variables, select `Path` → Edit → New → Add `C:\Lua\`
+   * Click OK and restart your terminal
+4. Verify Lua is accessible:
+
+```powershell
+lua -v
+```
+
+Should print the Lua version.
+
+Now TEdit can run Lua plugins and themes.
 
 ### Build & Install
 
@@ -38,6 +57,9 @@ If you are on linux, go [here](https://github.com/RobertFlexx/tedit)
 # Clone the repo
 git clone https://github.com/RobertFlexx/tedit/tree/tedit-windows
 cd tedit-windows
+
+# Restore packages first (important if NuGet sources are empty)
+dotnet restore src\TEdit.csproj
 
 # Build
 .\scripts\build.ps1 -Release
@@ -124,7 +146,7 @@ tedit> wq
 | `diff`                            | Show changes vs saved file                      |
 | `ls` / `dir` / `pwd` / `cd`       | Directory navigation                            |
 | `clear` / `cls`                   | Clear screen                                    |
-| `lua <code>`                      | Run Lua code                                    |
+| `lua <code>`                      | Run Lua code (requires Lua in PATH)             |
 | `:run-plugin <name>`              | Run a Lua plugin                                |
 | `plugins`                         | List available plugins                          |
 | `lua-themes`                      | List Lua themes                                 |
@@ -221,9 +243,9 @@ Plugins are Lua scripts that can read/write files and run commands. **Only use p
 ```
 %APPDATA%\tedit\
 ├── config.ini          # Settings
-├── plugins\            # Lua plugins
+├── plugins\           # Lua plugins
 │   └── example.lua
-├── themes\             # Lua themes
+├── themes\            # Lua themes
 │   └── cyberpunk.lua
 └── recover-*.tmp       # Auto-recovery files
 ```
@@ -276,6 +298,7 @@ You can also use the `.bat` wrappers if PowerShell isn't your default.
 
 1. Install [.NET 8.0 SDK](https://dotnet.microsoft.com/download)
 2. Clone this repo
+3. Ensure NuGet sources are configured (`dotnet nuget add source https://api.nuget.org/v3/index.json -n nuget.org`)
 
 ### Build Debug
 
@@ -326,9 +349,11 @@ It's not a shell. It's not a TUI. It's a **command-line text editor** that stays
 
 * Use the colon: `:run-plugin name` not just `run-plugin name`
 
-**Build fails?**
+**Build fails / NU1100 errors?**
 
 * Make sure .NET 8.0 SDK is installed: `dotnet --version`
+* Make sure NuGet sources exist: `dotnet nuget list source`
+* Add nuget.org if missing: `dotnet nuget add source https://api.nuget.org/v3/index.json -n nuget.org`
 
 ---
 
