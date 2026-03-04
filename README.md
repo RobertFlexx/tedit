@@ -34,7 +34,7 @@
 
 ### Install Lua on Windows
 
-1. Download Lua 5.4.x (Win64 recommended) from [LuaBinaries](https://luabinaries.sourceforge.net/)
+1. Download Lua 5.4.x (Win64 recommended) from [LuaBinaries](https://luabinaries.sourceforge.net/download.html)
 2. Extract to a folder, e.g., `C:\Lua\`
 3. Add the folder to your PATH:
 
