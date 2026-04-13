@@ -2,6 +2,8 @@
 
 `tedit` is a Linux/BSD/MacOS text editor, lightweight, it is not a TUI or GUI, it is a command-line text editor inspired by *ed*/*ex*—with modern safety, syntax highlighting, themes, and quality-of-life extras in one fast, portable binary. Check out [this](https://github.com/Kokonico/medit)! :D
 
+> If you are on windows, go [here](https://github.com/RobertFlexx/tedit/tree/tedit-windows)
+
 > psst.. bored? have no computer power for a physics game? dont want gigabytes of bloat? want to soothe your nerves? oh boy well i got the game for you! check out my [PowderSandbox](https://github.com/RobertFlexx/Powder-Sandbox-GameHub) Family, a tree of one powder sandbox written in multiple languages! pick your fire!
 
 ---
