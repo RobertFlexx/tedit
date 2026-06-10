@@ -285,6 +285,7 @@ confirm(){
 SCRIPT_DIR=$(
   CDPATH= cd -P -- "$(dirname -- "$0")" 2>/dev/null && pwd
 )
+REPO_DIR=$(CDPATH= cd -P -- "$SCRIPT_DIR/.." 2>/dev/null && pwd)
 
 # -----------------------------
 # CLEAN profile helper
@@ -429,12 +430,12 @@ done
 
 next "Cleaning local build artifacts (if this is the repo)"
 # only touch obvious build outputs; do NOT delete repo unless --purge-repo
-if [ -d "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/tedit.cpp" ]; then
+if [ -d "$REPO_DIR" ] && [ -f "$REPO_DIR/src/tedit.cpp" ]; then
   if [ "$DRY_RUN" -eq 1 ]; then
-    say "DRY-RUN: would clean build outputs in $SCRIPT_DIR"
+    say "DRY-RUN: would clean build outputs in $REPO_DIR"
   else
     (
-      cd "$SCRIPT_DIR" 2>/dev/null || exit 0
+      cd "$REPO_DIR" 2>/dev/null || exit 0
       # best-effort "make clean"
       if [ -f Makefile ]; then
         if have gmake; then gmake clean >/dev/null 2>&1 || :
@@ -489,13 +490,13 @@ fi
 
 if [ "$PURGE_REPO" -eq 1 ]; then
   next "Purging repository directory"
-  if [ -d "$SCRIPT_DIR/.git" ] && [ -f "$SCRIPT_DIR/tedit.cpp" ]; then
+  if [ -d "$REPO_DIR/.git" ] && [ -f "$REPO_DIR/src/tedit.cpp" ]; then
     # safety rails: don't nuke / or ~ by accident
-    case "$SCRIPT_DIR" in
-      "/"|"$HOME"|"/home"|"/root") warn "Refusing to purge suspicious dir: $SCRIPT_DIR";;
+    case "$REPO_DIR" in
+      "/"|"$HOME"|"/home"|"/root") warn "Refusing to purge suspicious dir: $REPO_DIR";;
       *)
-        if [ "$ASSUME_YES" -eq 1 ] || confirm "Delete repo dir '$SCRIPT_DIR' (cannot be undone)"; then
-          rm_dir "$SCRIPT_DIR"
+        if [ "$ASSUME_YES" -eq 1 ] || confirm "Delete repo dir '$REPO_DIR' (cannot be undone)"; then
+          rm_dir "$REPO_DIR"
         else
           warn "Skipped repo deletion."
         fi

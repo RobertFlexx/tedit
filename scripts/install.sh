@@ -11,7 +11,8 @@ USER_PREFIX="${PREFIX:-$HOME/.local}"
 SCRIPT_DIR=$(
   CDPATH= cd -P -- "$(dirname -- "$0")" 2>/dev/null && pwd
 )
-cd "$SCRIPT_DIR" || { echo "ERROR: cannot cd to $SCRIPT_DIR" >&2; exit 2; }
+REPO_DIR=$(CDPATH= cd -P -- "$SCRIPT_DIR/.." 2>/dev/null && pwd)
+cd "$REPO_DIR" || { echo "ERROR: cannot cd to $REPO_DIR" >&2; exit 2; }
 
 mktemp_file() {
   if tmp=$(mktemp "${TMPDIR:-/tmp}/${APP_NAME}-install.XXXXXX" 2>/dev/null); then
@@ -81,7 +82,7 @@ usage(){
 $APP_NAME installer
 
 Usage:
-  ./install.sh [options]
+  ./scripts/install.sh [options]
 
 Options:
   --prefix PATH      Install prefix (default: $DEFAULT_PREFIX, or user prefix if not root)
@@ -311,9 +312,11 @@ lua_try_compile(){
   cxx="$1"; cflags="$2"; libs="$3"
   tmp="$(mktemp_file)"
   cat >"$tmp.c" <<'EOF'
+extern "C" {
 #include <lua.h>
 #include <lauxlib.h>
 #include <lualib.h>
+}
 int main(void){ lua_State* L = luaL_newstate(); lua_close(L); return 0; }
 EOF
   set +e
@@ -501,7 +504,7 @@ fi
 info "Installing $APP_NAME"
 say "Log: $LOG"
 
-[ -f "tedit.cpp" ] || die "Run this from the $APP_NAME source directory (missing: tedit.cpp)."
+[ -f "src/tedit.cpp" ] || die "Run this from the $APP_NAME source directory (missing: src/tedit.cpp)."
 
 MAKE_BIN="$(choose_make)"
 CXX_BIN="$(choose_cxx)"
@@ -514,7 +517,10 @@ say "  pkg : ${PKG:-none}"
 say "  pc  : ${PC_BIN:-none}"
 say "  prefix: ${TARGET_PREFIX}"
 
-auth_once
+PREFIX_PARENT=$(dirname "$TARGET_PREFIX")
+if [ "$(id -u)" -ne 0 ] && [ "$TARGET_PREFIX" != "$USER_PREFIX" ] && [ ! -w "$TARGET_PREFIX" ] && [ ! -w "$PREFIX_PARENT" ]; then
+  auth_once
+fi
 
 # Nix/Guix: ephemeral env build
 if [ "$PKG" = "nix" ]; then
@@ -587,13 +593,14 @@ fi
 
 # Man page
 if [ "$INSTALL_MAN" -eq 1 ]; then
-  if [ -f "./${APP_NAME}.1" ]; then
+  MAN_SRC="./mandoc/${APP_NAME}.1"
+  if [ -f "$MAN_SRC" ]; then
     MAN_DIR="${TARGET_PREFIX}/share/man/man1"
     if [ "$(id -u)" -eq 0 ] || [ -z "$SUDO" ] || [ "$TARGET_PREFIX" = "$USER_PREFIX" ]; then
-      spinner "man page" sh -c "mkdir -p '$MAN_DIR' && install -m 0644 './${APP_NAME}.1' '$MAN_DIR/${APP_NAME}.1'" || true
+      spinner "man page" sh -c "mkdir -p '$MAN_DIR' && install -m 0644 '$MAN_SRC' '$MAN_DIR/${APP_NAME}.1'" || true
       have gzip && spinner "gzip man" gzip -f -9 "$MAN_DIR/${APP_NAME}.1" || true
     else
-      run_root "man page" sh -c "mkdir -p '$MAN_DIR' && install -m 0644 './${APP_NAME}.1' '$MAN_DIR/${APP_NAME}.1'" || true
+      run_root "man page" sh -c "mkdir -p '$MAN_DIR' && install -m 0644 '$MAN_SRC' '$MAN_DIR/${APP_NAME}.1'" || true
       have gzip && run_root "gzip man" gzip -f -9 "$MAN_DIR/${APP_NAME}.1" || true
     fi
   else

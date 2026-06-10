@@ -1,4 +1,4 @@
-.TH TEDIT 1 "December 12, 2025" "tedit 2.1.0" "User Commands"
+.TH TEDIT 1 "June 10, 2026" "tedit 2.2.0" "User Commands"
 .SH NAME
 tedit - a minimal yet mighty command-line text editor
 .SH SYNOPSIS
@@ -99,12 +99,20 @@ Common editor commands:
 .RS
 .EX
 :help              # list commands
+:help buffer       # focused help
+:set               # show settings
 :set number on     # show line numbers
 :edit              # enter interactive edit mode for a specific line
 :find text         # search
+:findre -i text    # case-insensitive regex search
 :repl old new      # replace
 :theme neon        # change theme
+:theme preview     # preview theme colors
 :highlight on      # enable syntax highlighting
+:buffer 1          # switch buffer
+:config            # print config paths
+:recent            # list recent files
+:plugin trusted    # list trusted plugin warning sources
 :lua-themes        # list available Lua themes
 :lua tedit_echo("hi")   # run a small Lua snippet
 :plugins           # list loaded Lua plugins
@@ -140,19 +148,19 @@ The repository includes helper scripts with a cinematic progress bar and spinner
 These tools detect your package manager, install missing build dependencies, and
 log verbosely to temporary files.
 .TP
-.B install.sh
+.B scripts/install.sh
 Detects dependencies (\fBmake\fR, a C++17 compiler, etc.), builds, and installs
 \fBtedit\fR automatically with a progress display. On systems using Gentoo,
 shows a yellow note and may run an interactive \fBemerge\fR. Installs to
 \fI/usr/local/bin\fR when run with privileges, or \fI~/.local/bin\fR without.
 .TP
-.B update.sh
+.B scripts/update.sh
 Checks for git updates quietly; if none are available it prints exactly:
 \fIUp to date.\fR
 Otherwise it pulls (preferring rebase), rebuilds, reinstalls, and optionally
 strips the binary. Local uncommitted changes are auto-stashed and restored.
 .TP
-.B uninstall.sh
+.B scripts/uninstall.sh
 Removes \fBtedit\fR, man pages, installer wrappers, PATH entries added by the
 installer, and local build artifacts. Supports purge flags (see below).
 .PP
@@ -168,7 +176,7 @@ The scripts write logs to:
 .PP
 Set \fBVERBOSE=1\fR to stream command output instead of using the spinner.
 .SH WRAPPERS
-After running \fBinit.sh\fR once inside the repo, small wrapper commands are
+After running \fBscripts/init.sh\fR once inside the repo, small wrapper commands are
 installed to your PATH so you can run project tools from anywhere:
 .PP
 .RS
@@ -182,7 +190,7 @@ tedit-uninstall
 .RE
 .PP
 Wrappers remember the repo location and \fBcd\fR into it before executing
-\fBinstall.sh\fR/\fBupdate.sh\fR/\fBuninstall.sh\fR, keeping builds predictable.
+\fBscripts/install.sh\fR/\fBscripts/update.sh\fR/\fBscripts/uninstall.sh\fR, keeping builds predictable.
 .PP
 If a wrapper loses track of the repo, you can point it at the correct clone by
 creating a marker file or using an environment variable:
@@ -262,12 +270,12 @@ is loaded on demand via \fB:theme <name>\fR rather than at startup.
 .PP
 A few helper functions are exposed to Lua:
 .IP \[bu] 2
-\fBtedit_command(str)\fR – run an editor command as if it was typed at the
+\fBtedit_command(str)\fR - run an editor command as if it was typed at the
 tedit prompt.
 .IP \[bu]
-\fBtedit_echo(str)\fR – print a message using the editor's accent color.
+\fBtedit_echo(str)\fR - print a message using the editor's accent color.
 .IP \[bu]
-\fBtedit_print(line)\fR – print a specific line from the current buffer.
+\fBtedit_print(line)\fR - print a specific line from the current buffer.
 .PP
 Lua plugins and themes run with the same privileges as your user account and
 can execute arbitrary code (including shell commands and file I/O). Treat

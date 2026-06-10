@@ -18,4 +18,4 @@ Contributions are always welcome! Please follow the guidelines below to ensure a
 1. Keep your code **well-documented** and easy to read.  
 2. Provide a clear **description** of your changes in the pull request.
 
-That’s all — thanks for helping make this project better!
+That's all - thanks for helping make this project better!

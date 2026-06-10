@@ -1,24 +1,14 @@
-# Makefile — tedit (C++17, interactive CLI editor)
-# Portable + pkg-config aware Lua detection.
-# Usage:
-#   make                # builds
-#   make release        # optimized build
-#   make debug          # debug build
-#   make PREFIX=/usr    # install prefix
-#   make DESTDIR=/tmp/pkg install
-#   make LUA_CFLAGS=... LUA_LIBS=...   # manual Lua override
-
 SHELL     := /bin/sh
 
 APP       := tedit
 TARGET    := $(APP)
-SRC       := tedit.cpp
+SRC       := src/tedit.cpp
 OBJ       := $(SRC:.cpp=.o)
+SRC_ALL   := $(wildcard src/*.cpp)
 
 PREFIX    ?= /usr/local
 DESTDIR   ?=
 
-# Toolchain
 CXX       ?= c++
 AR        ?= ar
 RM        ?= rm -f
@@ -26,43 +16,32 @@ MKDIR_P   ?= mkdir -p
 INSTALL   ?= install
 STRIP     ?= strip
 
-# Build modes
 MODE      ?= release
 
-# Common flags (allow user override/extend)
 CPPFLAGS  ?=
 CXXFLAGS  ?= -std=c++17 -Wall -Wextra -Wpedantic -D_POSIX_C_SOURCE=200809L
 LDFLAGS   ?=
 LDLIBS    ?=
 
-# Mode-specific
 ifeq ($(MODE),debug)
   CXXFLAGS += -O0 -g3
 else ifeq ($(MODE),release)
   CXXFLAGS += -O2 -g
 else
-  # custom MODE allowed
   CXXFLAGS += -O2 -g
 endif
 
-# Optional hardening (safe defaults; can disable: make HARDEN=0)
 HARDEN ?= 1
 ifeq ($(HARDEN),1)
   CXXFLAGS += -fno-omit-frame-pointer
 endif
 
-# ----------------------------
-# Lua detection
-# Prefer pkg-config if available. Tries lua5.4, lua5.3, lua, luajit.
-# Users may always override LUA_CFLAGS/LUA_LIBS explicitly.
-# ----------------------------
 PKG_CONFIG ?= pkg-config
 
 LUA_PKG   ?=
 LUA_CFLAGS ?=
 LUA_LIBS   ?=
 
-# only auto-detect if user didn't set LUA_* vars
 ifeq ($(strip $(LUA_CFLAGS)$(LUA_LIBS)),)
   ifneq ($(shell command -v $(PKG_CONFIG) >/dev/null 2>&1 && echo yes),)
     LUA_PKG := $(shell \
@@ -78,7 +57,6 @@ ifeq ($(strip $(LUA_CFLAGS)$(LUA_LIBS)),)
   endif
 endif
 
-# final fallback (keeps your original behavior but only if needed)
 ifeq ($(strip $(LUA_CFLAGS)$(LUA_LIBS)),)
   LUA_CFLAGS := -I/usr/include/lua5.4
   LUA_LIBS   := -llua5.4 -ldl -lm
@@ -87,16 +65,11 @@ endif
 CPPFLAGS += $(LUA_CFLAGS)
 LDLIBS   += $(LUA_LIBS)
 
-# ----------------------------
-# Defaults
-# ----------------------------
-MANPAGE   ?= tedit.1
+MANPAGE   ?= mandoc/tedit.1
+MANPAGE_FILE := $(notdir $(MANPAGE))
 BINDIR    := $(DESTDIR)$(PREFIX)/bin
 MANDIR    := $(DESTDIR)$(PREFIX)/share/man/man1
 
-# ----------------------------
-# Targets
-# ----------------------------
 all: $(TARGET)
 
 $(TARGET): $(OBJ)
@@ -128,23 +101,22 @@ run: $(TARGET)
 install: $(TARGET)
 	@$(MKDIR_P) "$(BINDIR)"
 	@$(INSTALL) -m 0755 "$(TARGET)" "$(BINDIR)/$(TARGET)"
-	@# man page is optional
 	@if [ -f "$(MANPAGE)" ]; then \
 	  $(MKDIR_P) "$(MANDIR)"; \
-	  $(INSTALL) -m 0644 "$(MANPAGE)" "$(MANDIR)/$(MANPAGE)"; \
+	  $(INSTALL) -m 0644 "$(MANPAGE)" "$(MANDIR)/$(MANPAGE_FILE)"; \
 	else \
 	  echo "note: $(MANPAGE) not found; skipping man install"; \
 	fi
 
 uninstall:
 	@$(RM) "$(BINDIR)/$(TARGET)"
-	@$(RM) "$(MANDIR)/$(MANPAGE)"
+	@$(RM) "$(MANDIR)/$(MANPAGE_FILE)"
 
 strip: $(TARGET)
 	@command -v "$(STRIP)" >/dev/null 2>&1 && "$(STRIP)" "$(TARGET)" 2>/dev/null || true
 
 format:
-	@command -v clang-format >/dev/null 2>&1 && clang-format -i $(SRC) || echo "clang-format not found; skipping"
+	@command -v clang-format >/dev/null 2>&1 && clang-format -i $(SRC_ALL) || echo "clang-format not found; skipping"
 
 clean:
 	@$(RM) $(OBJ) $(TARGET)

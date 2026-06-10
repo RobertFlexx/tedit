@@ -2,7 +2,7 @@
 
 *(Beginner-friendly guide with examples & safety notes)*
 
-`tedit` embeds a small **Lua 5.4** runtime so you can customize behavior, automate editing tasks, and define your own color themes — all without recompiling the editor.
+`tedit` embeds a small **Lua 5.4** runtime so you can customize behavior, automate editing tasks, and define your own color themes - all without recompiling the editor.
 
 This document walks through:
 
@@ -115,7 +115,7 @@ Once you’ve compiled `tedit` with Lua support:
 
   * Prints a specific line (1-based) from the current buffer.
 
-These are **safe** high-level helpers – they don’t bypass tedit’s safety mechanisms; they just drive the editor.
+These are **safe** high-level helpers - they don't bypass tedit's safety mechanisms; they just drive the editor.
 
 ---
 
@@ -398,7 +398,7 @@ These are handy for testing ideas before you commit them into a plugin file.
 
 ---
 
-## 10. WARNING / DISCLAIMER — Plugin Safety & Malicious Code
+## 10. WARNING / DISCLAIMER - Plugin Safety & Malicious Code
 
 > **⚠️ WARNING: Always treat third-party plugins as untrusted code.**
 
@@ -548,7 +548,7 @@ Here are some conservative guidelines for **beginner-level, relatively safe** pl
 * **Lua themes** live in `~/tedit-config/themes` and are applied via `theme <name>`.
 * `tedit` gives Lua **safe helper functions**: `tedit_command`, `tedit_echo`, `tedit_print`.
 * You can start with **tiny, readable plugins** that just call those helpers.
-* Some Lua APIs (`os.execute`, `io.popen`, etc.) are powerful and dangerous — `tedit` warns about them, but **you** must decide what to trust.
+* Some Lua APIs (`os.execute`, `io.popen`, etc.) are powerful and dangerous - `tedit` warns about them, but **you** must decide what to trust.
 * When in doubt, keep your plugins small, transparent, and focused on editing, not system-level magic.
 
 If you want, next step I can help you write a specific plugin or theme you have in mind (e.g., “trim trailing spaces”, “auto-add header comment”, or a specific color scheme).

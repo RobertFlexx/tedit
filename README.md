@@ -1,6 +1,6 @@
-# tedit — A Minimal Yet Mighty Command-Line Text Editor (this is not a shell! it has shell-like behavior.)
+# tedit - A Minimal Yet Mighty Command-Line Text Editor (this is not a shell! it has shell-like behavior.)
 
-`tedit` is a Linux/BSD/MacOS text editor, lightweight, it is not a TUI or GUI, it is a command-line text editor inspired by *ed*/*ex*—with modern safety, syntax highlighting, themes, and quality-of-life extras in one fast, portable binary. Check out [this](https://github.com/Kokonico/medit)! :D
+`tedit` is a Linux/BSD/MacOS text editor, lightweight, it is not a TUI or GUI, it is a command-line text editor inspired by *ed*/*ex* - with modern safety, syntax highlighting, themes, and quality-of-life extras in one fast, portable binary. Check out [this](https://github.com/Kokonico/medit)! :D
 
 > If you are on windows, go [here](https://github.com/RobertFlexx/tedit/tree/tedit-windows)
 
@@ -10,7 +10,7 @@
 
 ## Highlights (What’s New & Notable)
 
-* **Fast, simple, dependency-free** — pure C++17 single binary.
+* **Fast, simple, dependency-free** - pure C++17 single binary.
 
 * **Modern safety**
 
@@ -39,7 +39,7 @@
 
   * Run `~/.tedit/hooks/on_save` and `~/.tedit/hooks/on_quit` if present.
   * Optional banner from `~/.tedit_banner`.
-  * Confetti on successful saves (because… joy).
+  * Confetti on successful saves (because... joy).
 
 * **Privileged saves (doas)** If a save fails for permissions, `tedit` can write to a temp file and `doas mv` it into place (configure `doas` as needed).
 
@@ -61,27 +61,27 @@ For more information about Plugins & Themes for Tedit, see [here](https://github
 ```bash
 git clone https://github.com/RobertFlexx/tedit
 cd tedit
-sudo sh init.sh            # one-time: installs PATH wrappers (tedit-install/update/uninstall)
+sudo sh scripts/init.sh    # one-time: installs PATH wrappers (tedit-install/update/uninstall)
 sudo tedit-install    # build + install to /usr/local/bin
 sudo tedit-update     # fetch latest updates, rebuild, reinstall
 sudo tedit-uninstall  # remove binary + man page + PATH entry
 ```
 
-### What `init.sh` does (one-time, must run in git directory)
+### What `scripts/init.sh` does (one-time, must run in git directory)
 
 * Creates small wrapper commands in your **PATH** so you can run the project tools **from anywhere**:
 
   * `tedit-install`, `tedit-update`, `tedit-uninstall`
-  * By default they’re placed in `~/.local/bin` (or in `/usr/local/bin` if you run `sh init.sh --system`).
+  * By default they’re placed in `~/.local/bin` (or in `/usr/local/bin` if you run `sh scripts/init.sh --system`).
 * Records the path to **this clone** so wrappers know where to run. Each wrapper will:
 
   * `cd` into the recorded repo directory before executing.
-  * For updates, call the underlying scripts (e.g., `update.sh`) which can `git fetch/pull` and then rebuild.
+  * For updates, call the underlying scripts (e.g., `scripts/update.sh`) which can `git fetch/pull` and then rebuild.
 * Ensures `~/.local/bin` is on your `PATH` (appends to your shell profile if needed).
-* Idempotent: safe to re-run. If you reclone somewhere else later, run `sh init.sh` again in the new clone to repoint the wrappers.
+* Idempotent: safe to re-run. If you reclone somewhere else later, run `sh scripts/init.sh` again in the new clone to repoint the wrappers.
 * Use `sudo` with the wrappers when you want system-wide installs/updates.
 
-> After running `init.sh` once, you can use **`tedit-install`**, **`tedit-update`**, and **`tedit-uninstall`** from **any directory**.
+> After running `scripts/init.sh` once, you can use **`tedit-install`**, **`tedit-update`**, and **`tedit-uninstall`** from **any directory**.
 
 ---
 
@@ -91,7 +91,7 @@ Short answer: **safety, atomicity, and predictability.** Longer answer:
 
 1. **Atomic saves need same-filesystem renames.** `rename(2)` is only atomic within the same mount. Working **inside the target directory** guarantees your save stays atomic (no partial files if the power blips).
 
-2. **Tools expect the project’s CWD.** Filters (`filter … !cmd`), hooks, and many build scripts assume they run from the project root. `cd` keeps that assumption true and your workflow friction-free.
+2. **Tools expect the project's CWD.** Filters (`filter ... !cmd`), hooks, and many build scripts assume they run from the project root. `cd` keeps that assumption true and your workflow friction-free.
 
 3. **Cleaner mental model & completion.** You get directory-only tab completion for `cd`, sensible relative paths, and fewer “oops I saved to the wrong place” moments.
 
@@ -104,7 +104,7 @@ Short answer: **safety, atomicity, and predictability.** Longer answer:
 ### Install
 
 ```bash
-sudo tedit-install    # or: sudo sh install.sh
+sudo tedit-install    # or: sudo sh scripts/install.sh
 ```
 
 This script will:
@@ -118,7 +118,7 @@ This script will:
 ### Update
 
 ```bash
-sudo tedit-update     # or: sudo sh update.sh
+sudo tedit-update     # or: sudo sh scripts/update.sh
 ```
 
 This checks for git updates. If `tedit` is already current, it will say:
@@ -132,7 +132,7 @@ Otherwise, it will pull the latest changes, rebuild, and reinstall automatically
 ### Uninstall
 
 ```bash
-sudo tedit-uninstall  # or: sudo sh uninstall.sh
+sudo tedit-uninstall  # or: sudo sh scripts/uninstall.sh
 ```
 
 This cleanly removes `tedit` from your system and any PATH entries added by the installer.
@@ -146,12 +146,24 @@ make
 sudo make install
 ```
 
+Or with Meson:
+
+```bash
+meson setup build
+meson compile -C build
+sudo meson install -C build
+```
+
 > Requires a C++17 compiler (e.g., `g++`). Works on Linux/macOS/BSD. Windows users: use WSL.
 
 ### Open a file
 
 ```bash
-tedit notes.txt     # or just: tedit   (start empty, open later)
+tedit notes.txt              # open one file
+tedit a.txt b.txt c.txt      # open extra files as buffers
+tedit --version              # print version
+tedit --help                 # print CLI usage
+tedit                        # start empty, open later
 ```
 
 ### View the Man Page
@@ -191,40 +203,39 @@ tedit> wq
 
 ## Basic Commands (Cheat Sheet)
 
-| Command                           | Description                                                                     |      |             |                |
-| --------------------------------- | ------------------------------------------------------------------------------- | ---- | ----------- | -------------- |
-| `open <file>`                     | Open a file                                                                     |      |             |                |
-| `w` / `write`                     | Save                                                                            |      |             |                |
-| `wq`                              | Save & quit                                                                     |      |             |                |
-| `q`                               | Quit (prompts if unsaved)                                                       |      |             |                |
-| `p [range]` / `r <n>`             | Print lines / show one line                                                     |      |             |                |
-| `a` / `i <n>`                     | Append / insert before line *n* (`.` alone to finish)                           |      |             |                |
-| `edit <n>`                        | Edit line *n* (`.` alone to finish)                                             |      |             |                |
-| `d [range]` / `m <from> <to>`     | Delete range / move a line                                                      |      |             |                |
-| `join [range]`                    | Join lines into one                                                             |      |             |                |
-| `find` / `findi` / `findre`       | Search (plain / case-insensitive / regex)                                       |      |             |                |
-| `n` / `N`                         | Next / previous search hit                                                      |      |             |                |
-| `repl old new` / `replg …`        | Replace first / replace globally per line                                       |      |             |                |
-| `undo` / `redo`                   | History navigation                                                              |      |             |                |
-| `goto <n>`                        | Jump to line *n*                                                                |      |             |                |
-| `read <path> [n]`                 | Insert file after line *n* (default: end)                                       |      |             |                |
-| `write [range] <path>`            | Write range out to a new path                                                   |      |             |                |
-| `filter <range> !cmd`             | Pipe range through shell and replace                                            |      |             |                |
-| `theme <name>`                    | `default`, `dark`, `neon`, `matrix`, `paper`, `yellow`, `iceberg` or Lua themes |      |             |                |
-| `highlight on/off`                | Toggle syntax highlighting                                                      |      |             |                |
-| `set number                       | backup                                                                          | wrap | truncate …` | Editor toggles |
-| `set autosave <sec>`              | Autosave interval for crash recovery snapshots                                  |      |             |                |
-| `set lang <name>`                 | Force a syntax (`cpp, python, sh, rb, js, html, css…`)                          |      |             |                |
-| `alias <from> <to…>`              | Define command aliases                                                          |      |             |                |
-| `new` / `bnext` / `bprev` / `lsb` | Multi-buffer workflow                                                           |      |             |                |
-| `diff`                            | Show changes vs on-disk                                                         |      |             |                |
-| `ls [-a] [-l] [path]` / `pwd`     | Directory helpers                                                               |      |             |                |
-| `cd <dir>`                        | Change directory (use `~`, `.`, `..`)                                           |      |             |                |
-| `clear`                           | Clear screen + scrollback                                                       |      |             |                |
-| `lua <code>`                      | Run inline Lua code                                                             |      |             |                |
-| `luafile <path>`                  | Run a Lua script file                                                           |      |             |                |
-| `plugins` / `reload-plugins`      | List or reload Lua plugins from `~/tedit-config/plugins`                        |      |             |                |
-| `lua-themes`                      | List Lua themes from `~/tedit-config/themes`                                    |      |             |                |
+| Command | Description |
+| --- | --- |
+| `help <command>` | Show focused help for a command |
+| `open <file>` | Open a file, including `~` paths |
+| `w` / `write` / `w!` | Save, with `w!` skipping backup |
+| `write [range] <path>` | Write selected lines to a new path |
+| `wq` | Save and quit |
+| `q` / `q!` | Quit with prompt, or force quit without saving |
+| `p [range]` / `r <n>` | Print lines or show one line |
+| `a` / `i <n>` / `edit <n>` | Append, insert, or edit lines |
+| `d [range]` / `m <from> <to>` / `join [range]` | Delete, move, or join lines |
+| `find` / `findi` / `findre [-i]` / `findrei` | Search plain text or regex |
+| `n` / `N` | Next or previous search hit |
+| `repl old new` / `replg old new` | Replace first or all matches per line |
+| `undo` / `redo` | History navigation |
+| `goto <n>` | Jump to line *n* |
+| `read <path> [n]` | Insert file after line *n* |
+| `filter <range> !cmd` | Pipe range through shell and replace |
+| `set` / `set <name> <value>` | Show or change settings |
+| `syntax <name>` | Alias for `set lang <name>` |
+| `theme <name>` / `theme preview` | Apply or preview themes |
+| `highlight on/off` | Toggle syntax highlighting |
+| `alias <from> <to...>` | Define command aliases |
+| `new` / `bnext` / `bprev` / `lsb` / `buffer <n>` / `close` | Multi-buffer workflow |
+| `config` / `recent` / `messages` | Show paths, recent files, or message log |
+| `diff` | Show changes vs on-disk |
+| `ls [-a] [-l] [path]` / `pwd` / `cd <dir>` | Directory helpers |
+| `clear` | Clear screen and scrollback |
+| `lua <code>` / `luafile <path>` | Run Lua code or a Lua script file |
+| `run-plugin <name>` | Run Lua plugin, invoked as `:run-plugin <name>` |
+| `plugin trust <name|path>` / `plugin trusted` | Manage trusted plugin warning sources |
+| `plugins` / `reload-plugins` | List or reload Lua plugins |
+| `lua-themes` | List Lua themes from `~/tedit-config/themes` |
 
 ---
 
@@ -356,7 +367,7 @@ If in doubt, **don’t run it**. Stick to simple, local tweaks (like the example
 If saving fails with `EACCES`, `tedit` can:
 
 1. Write a temp file in `/tmp`, then
-2. Run `doas mv /tmp/… <target>`.
+2. Run `doas mv /tmp/... <target>`.
 
 Set up your `doas` policy accordingly, or run `tedit` as root when editing system files.
 
@@ -366,7 +377,7 @@ Set up your `doas` policy accordingly, or run `tedit` as root when editing syste
 
 ```bash
 $ tedit main.cpp
-tedit — editing main.cpp (120 lines). Type 'help'.
+tedit - editing main.cpp (120 lines). Type 'help'.
 
 tedit> find main
 match at 4: int main() {
@@ -374,7 +385,7 @@ match at 97: // main loop
 tedit> diff
 --- main.cpp
 +++ /tmp/tedit_diff_XXXXXX
-@@ …
+@@ ...
 tedit> wq
 ```
 
@@ -382,7 +393,7 @@ tedit> wq
 
 ## Philosophy
 
-`tedit` follows the Unix idea of **doing one thing well**: editing text with predictable, script-friendly commands—while still giving you modern comforts like highlighting, undo, themes, Lua scripting, and safer saves.
+`tedit` follows the Unix idea of **doing one thing well**: editing text with predictable, script-friendly commands - while still giving you modern comforts like highlighting, undo, themes, Lua scripting, and safer saves.
 
 ---
 
@@ -407,7 +418,7 @@ BSD-3-Clause. Have fun, keep the notice, and ship great things. :P
 
 ### Using the Wrappers (recommended)
 
-After you run `init.sh` once (in the repo), you can do everything from anywhere:
+After you run `scripts/init.sh` once (in the repo), you can do everything from anywhere:
 
 ```bash
 # Build + install (system-wide)
@@ -428,8 +439,8 @@ sudo tedit-uninstall
 
 ```bash
 # From inside the clone:
-sudo sh install.sh         # uses a cinematic bar + spinner
-# or with wrappers after init.sh:
+sudo sh scripts/install.sh # uses a cinematic bar + spinner
+# or with wrappers after scripts/init.sh:
 sudo tedit-install
 ```
 
@@ -441,17 +452,17 @@ What it does:
 4. Installs the **man page** (if present) and refreshes the man DB (best-effort).
 5. Adds the install bin dir to your **PATH** if needed.
 
-**Gentoo:** you’ll see `Gentoo detected — emerging toolchain (may be interactive).` in yellow.
+**Gentoo:** you'll see `Gentoo detected - emerging toolchain (may be interactive).` in yellow.
 
 ---
 
 ### Update (smart + quiet)
 
 ```bash
-# From anywhere (after init.sh):
+# From anywhere (after scripts/init.sh):
 sudo tedit-update
 # Or directly in the repo:
-sudo sh update.sh
+sudo sh scripts/update.sh
 ```
 
 What it does:
@@ -487,9 +498,9 @@ TEDIT_REPO="/absolute/path/to/tedit" sudo tedit-update
 sudo tedit-uninstall
 
 # Advanced (from repo or wrapper):
-sudo sh uninstall.sh --purge-user-data             # remove ~/.tedit* (rc, banner, hooks, recover)
-sudo sh uninstall.sh --purge-repo -y               # also remove THIS git repo directory (no prompt)
-sudo sh uninstall.sh --purge --yes                 # both of the above, non-interactive
+sudo sh scripts/uninstall.sh --purge-user-data     # remove ~/.tedit* (rc, banner, hooks, recover)
+sudo sh scripts/uninstall.sh --purge-repo -y       # also remove THIS git repo directory (no prompt)
+sudo sh scripts/uninstall.sh --purge --yes         # both of the above, non-interactive
 ```
 
 The uninstaller:
@@ -507,8 +518,8 @@ The uninstaller:
 * Set `VERBOSE=1` to stream command output instead of the spinner:
 
   ```bash
-  VERBOSE=1 sudo sh install.sh
-  VERBOSE=1 sudo sh update.sh
+  VERBOSE=1 sudo sh scripts/install.sh
+  VERBOSE=1 sudo sh scripts/update.sh
   ```
 * All runs write detailed logs:
 
@@ -529,8 +540,8 @@ If something acts cursed, share the **last ~60 lines** of the relevant log.
 * **Alpine/Chimera** (`apk`)
 * **Void** (`xbps-install`)
 * **Solus** (`eopkg`)
-* **Gentoo** (`emerge`) — **yellow note**; may be interactive
-* **macOS** (`brew`) — may require **Xcode Command Line Tools**
+* **Gentoo** (`emerge`) - **yellow note**; may be interactive
+* **macOS** (`brew`) - may require **Xcode Command Line Tools**
 
 ---
 
@@ -543,8 +554,8 @@ If something acts cursed, share the **last ~60 lines** of the relevant log.
 
 ### Wrapper Internals (FYI)
 
-* `init.sh` records the repo path so wrappers can **cd into the clone** before running tools.
-* `update.sh` can also discover the repo via:
+* `scripts/init.sh` records the repo path so wrappers can **cd into the clone** before running tools.
+* `scripts/update.sh` can also discover the repo via:
 
   * `TEDIT_REPO=/path/to/tedit`
   * Marker file: `/usr/local/share/tedit/repo`
@@ -560,17 +571,17 @@ This keeps `tedit-update` working even if you call it from a random directory.
 # Fresh setup
 git clone https://github.com/RobertFlexx/tedit
 cd tedit
-sudo sh init.sh
+sudo sh scripts/init.sh
 sudo tedit-install
 
 # Update later
 sudo tedit-update
 
 # Local-only install (no sudo)
-sh install.sh
+sh scripts/install.sh
 
 # Nuke everything (careful)
-sudo sh uninstall.sh --purge --purge-repo -y
+sudo sh scripts/uninstall.sh --purge --purge-repo -y
 ```
 
 ---
@@ -578,4 +589,3 @@ sudo sh uninstall.sh --purge --purge-repo -y
 ### Troubleshooting
 
 * **`Up to date.` but your local changes aren’t present?** You’re already on the latest commit. If you expected different code, check your remote/branch or run `git remote -v && git status
-

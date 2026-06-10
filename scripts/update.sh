@@ -345,10 +345,11 @@ install_deps(){
 SCRIPT_DIR=$(
   CDPATH= cd -P -- "$(dirname -- "$0")" 2>/dev/null && pwd
 )
+SCRIPT_REPO_DIR=$(CDPATH= cd -P -- "$SCRIPT_DIR/.." 2>/dev/null && pwd)
 
 repo_has_markers(){
   d="$1"
-  [ -f "$d/tedit.cpp" ] && return 0
+  [ -f "$d/src/tedit.cpp" ] && return 0
   [ -f "$d/Makefile" ] && grep -qE '(^|\s)tedit(\s|$)' "$d/Makefile" 2>/dev/null && return 0
   return 1
 }
@@ -373,6 +374,9 @@ locate_repo(){
   # script dir
   if repo_has_markers "$SCRIPT_DIR"; then
     printf "%s" "$SCRIPT_DIR"; return 0
+  fi
+  if repo_has_markers "$SCRIPT_REPO_DIR"; then
+    printf "%s" "$SCRIPT_REPO_DIR"; return 0
   fi
   # markers
   if p="$(read_marker "/usr/local/share/tedit/repo" 2>/dev/null || true)"; then
@@ -503,7 +507,7 @@ if [ "$NO_GIT" -eq 0 ] && in_git_repo; then
 
     STASHED=0
     if git_dirty; then
-      warn "Working tree dirty — stashing temporarily"
+      warn "Working tree dirty - stashing temporarily"
       spinner "Stashing..." "quiet_git stash push -u -m 'tedit-autostash-$(date +%s)' || true" || true
       STASHED=1
     fi

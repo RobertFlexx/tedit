@@ -5,9 +5,9 @@
 # - Portable POSIX sh with aggressive fallbacks
 #
 # Usage:
-#   sh init.sh                  # user-level wrappers in ~/.local/bin (or XDG)
-#   sh init.sh --system         # system-wide wrappers (default /usr/local/bin)
-#   sh init.sh --bin-dir PATH   # override wrapper destination
+#   sh scripts/init.sh                  # user-level wrappers in ~/.local/bin (or XDG)
+#   sh scripts/init.sh --system         # system-wide wrappers (default /usr/local/bin)
+#   sh scripts/init.sh --bin-dir PATH   # override wrapper destination
 #
 # Notes:
 # - System mode needs root OR sudo/doas.
@@ -99,7 +99,7 @@ SHOW=0
 
 usage(){
   cat <<EOF
-Usage: sh init.sh [options]
+Usage: sh scripts/init.sh [options]
 
 Options:
   --system         Install wrappers system-wide (default: /usr/local/bin)
@@ -144,14 +144,14 @@ next "Locating repo"
 SCRIPT_DIR=$(
   CDPATH= cd -P -- "$(dirname -- "$0")" 2>/dev/null && pwd
 )
-REPO_DIR="$SCRIPT_DIR"
+REPO_DIR=$(CDPATH= cd -P -- "$SCRIPT_DIR/.." 2>/dev/null && pwd)
 
-[ -f "$REPO_DIR/tedit.cpp" ] || die "tedit.cpp not found in $REPO_DIR (run init.sh from repo root)."
+[ -f "$REPO_DIR/src/tedit.cpp" ] || die "src/tedit.cpp not found in $REPO_DIR."
 
 # required scripts (wrappers call these)
-[ -f "$REPO_DIR/install.sh" ]   || die "install.sh not found in repo."
-[ -f "$REPO_DIR/update.sh" ]    || die "update.sh not found in repo."
-[ -f "$REPO_DIR/uninstall.sh" ] || die "uninstall.sh not found in repo."
+[ -f "$REPO_DIR/scripts/install.sh" ]   || die "scripts/install.sh not found in repo."
+[ -f "$REPO_DIR/scripts/update.sh" ]    || die "scripts/update.sh not found in repo."
+[ -f "$REPO_DIR/scripts/uninstall.sh" ] || die "scripts/uninstall.sh not found in repo."
 
 if [ ! -d "$REPO_DIR/.git" ]; then
   warn "No .git found in repo dir. Wrappers still work; git-based update features may be limited."
@@ -373,7 +373,7 @@ make_wrapper(){
     printf "%s\n" "if [ -z \"\$REPO_DIR\" ] && [ -f \"\$MARKER_USER\" ]; then REPO_DIR=\$(cat \"\$MARKER_USER\" 2>/dev/null || true); fi"
     printf "%s\n" "if [ -z \"\$REPO_DIR\" ]; then REPO_DIR=\"\$DEFAULT_REPO_DIR\"; fi"
     printf "%s\n" ""
-    printf "%s\n" "if [ ! -f \"\$REPO_DIR/tedit.cpp\" ]; then"
+    printf "%s\n" "if [ ! -f \"\$REPO_DIR/src/tedit.cpp\" ]; then"
     printf "%s\n" "  echo \"ERROR: \$APP_NAME repo not found at: \$REPO_DIR\" >&2"
     printf "%s\n" "  echo \"Hint: set TEDIT_REPO=/absolute/path/to/tedit or re-run init.sh in the repo.\" >&2"
     printf "%s\n" "  exit 1"
@@ -410,9 +410,9 @@ say "Log : $LOG"
 draw_bar "$STEP" "$TOTAL" "Starting"
 
 next "Creating wrappers"
-make_wrapper "tedit-install"   "install.sh"
-make_wrapper "tedit-update"    "update.sh"
-make_wrapper "tedit-uninstall" "uninstall.sh"
+make_wrapper "tedit-install"   "scripts/install.sh"
+make_wrapper "tedit-update"    "scripts/update.sh"
+make_wrapper "tedit-uninstall" "scripts/uninstall.sh"
 
 next "PATH integration"
 if [ "$SYSTEM" -eq 0 ] && [ "$NO_PATH" -eq 0 ]; then
