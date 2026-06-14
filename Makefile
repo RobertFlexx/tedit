@@ -19,7 +19,7 @@ STRIP     ?= strip
 MODE      ?= release
 
 CPPFLAGS  ?=
-CXXFLAGS  ?= -std=c++17 -Wall -Wextra -Wpedantic -D_POSIX_C_SOURCE=200809L
+CXXFLAGS  ?= -std=c++17 -Wall -Wextra -Wpedantic
 LDFLAGS   ?=
 LDLIBS    ?=
 

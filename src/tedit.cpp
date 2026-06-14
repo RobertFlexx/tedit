@@ -1,4 +1,3 @@
-#define _POSIX_C_SOURCE 200809L
 #define TEDIT_VERSION "2.2.0"
 #include <algorithm>
 #include <cerrno>
