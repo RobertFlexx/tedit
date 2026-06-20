@@ -36,6 +36,9 @@ ifeq ($(HARDEN),1)
   CXXFLAGS += -fno-omit-frame-pointer
 endif
 
+CXXFLAGS += -fPIE
+LDFLAGS  += -pie
+
 PKG_CONFIG ?= pkg-config
 
 LUA_PKG   ?=
