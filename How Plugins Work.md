@@ -550,5 +550,3 @@ Here are some conservative guidelines for **beginner-level, relatively safe** pl
 * You can start with **tiny, readable plugins** that just call those helpers.
 * Some Lua APIs (`os.execute`, `io.popen`, etc.) are powerful and dangerous - `tedit` warns about them, but **you** must decide what to trust.
 * When in doubt, keep your plugins small, transparent, and focused on editing, not system-level magic.
-
-If you want, next step I can help you write a specific plugin or theme you have in mind (e.g., “trim trailing spaces”, “auto-add header comment”, or a specific color scheme).
