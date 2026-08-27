@@ -5,6 +5,7 @@ TARGET    := $(APP)
 SRC       := src/tedit.cpp
 OBJ       := $(SRC:.cpp=.o)
 SRC_ALL   := $(wildcard src/*.cpp)
+HIGHLIGHT_TEST := tests/highlight_test
 
 PREFIX    ?= /usr/local
 DESTDIR   ?=
@@ -48,11 +49,12 @@ LUA_LIBS   ?=
 ifeq ($(strip $(LUA_CFLAGS)$(LUA_LIBS)),)
   ifneq ($(shell command -v $(PKG_CONFIG) >/dev/null 2>&1 && echo yes),)
     LUA_PKG := $(shell \
-      $(PKG_CONFIG) --exists lua5.4 2>/dev/null && echo lua5.4 || \
-      $(PKG_CONFIG) --exists lua5.3 2>/dev/null && echo lua5.3 || \
-      $(PKG_CONFIG) --exists lua     2>/dev/null && echo lua     || \
-      $(PKG_CONFIG) --exists luajit  2>/dev/null && echo luajit  || \
-      echo "")
+      if $(PKG_CONFIG) --exists lua5.4 2>/dev/null; then echo lua5.4; \
+      elif $(PKG_CONFIG) --exists lua5.3 2>/dev/null; then echo lua5.3; \
+      elif $(PKG_CONFIG) --exists lua5.2 2>/dev/null; then echo lua5.2; \
+      elif $(PKG_CONFIG) --exists lua 2>/dev/null; then echo lua; \
+      elif $(PKG_CONFIG) --exists luajit 2>/dev/null; then echo luajit; \
+      fi)
     ifneq ($(strip $(LUA_PKG)),)
       LUA_CFLAGS := $(shell $(PKG_CONFIG) --cflags $(LUA_PKG) 2>/dev/null)
       LUA_LIBS   := $(shell $(PKG_CONFIG) --libs   $(LUA_PKG) 2>/dev/null)
@@ -77,6 +79,9 @@ all: $(TARGET)
 
 $(TARGET): $(OBJ)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LDLIBS)
+
+# tedit.cpp is an amalgamation that directly includes every implementation file.
+$(OBJ): $(SRC_ALL)
 
 %.o: %.cpp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
@@ -121,7 +126,14 @@ strip: $(TARGET)
 format:
 	@command -v clang-format >/dev/null 2>&1 && clang-format -i $(SRC_ALL) || echo "clang-format not found; skipping"
 
-clean:
-	@$(RM) $(OBJ) $(TARGET)
+$(HIGHLIGHT_TEST): tests/highlight_test.cpp $(SRC_ALL)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ tests/highlight_test.cpp $(LDFLAGS) $(LDLIBS)
 
-.PHONY: all release debug run install uninstall clean format strip print-vars
+test: $(TARGET) $(HIGHLIGHT_TEST)
+	./$(HIGHLIGHT_TEST)
+	sh tests/regression.sh
+
+clean:
+	@$(RM) $(OBJ) $(TARGET) $(HIGHLIGHT_TEST)
+
+.PHONY: all release debug run install uninstall clean format strip print-vars test

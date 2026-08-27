@@ -1,18 +1,14 @@
 # tedit Lua Plugins & Themes
 
-*(Beginner-friendly guide with examples & safety notes)*
-
-`tedit` embeds a small **Lua 5.4** runtime so you can customize behavior, automate editing tasks, and define your own color themes - all without recompiling the editor.
+`tedit` embeds Lua (5.4, 5.3, or LuaJIT depending on the build) so you can customize behavior, automate editing tasks, and define your own color themes without recompiling the editor.
 
 This document walks through:
 
 * Where plugins/themes live
 * How `tedit` loads and runs them
-* **Beginner-friendly, copy-paste examples**
+* Plugin and theme examples
 * A **warning/disclaimer** about malicious plugins
 * What the “suspicious” Lua APIs actually do (`os.execute`, `io.popen`, etc.)
-
-> You don’t need to be a Lua expert. If you know basic scripting or can read simple code, you can follow along.
 
 ---
 
@@ -102,24 +98,36 @@ Once you’ve compiled `tedit` with Lua support:
 
 ## 3. What Lua Can Do Inside tedit
 
-`tedit` exposes some helper functions to Lua:
+`tedit` exposes a namespaced `tedit` API. The original global helpers remain available for compatibility:
 
-* `tedit_echo(text)`
+* `tedit.echo(text)` / `tedit_echo(text)`
 
   * Prints a message in the **accent** color in the status/output area.
-* `tedit_command(cmd)`
+* `tedit.command(cmd)` / `tedit_command(cmd)`
 
   * Runs a normal **tedit command** as if you typed it at the prompt.
   * Example: `tedit_command("set number on")`, `tedit_command("find main")`.
-* `tedit_print(line_number)`
+* `tedit.print(line_number)` / `tedit_print(line_number)`
 
   * Prints a specific line (1-based) from the current buffer.
 
-These are **safe** high-level helpers - they don't bypass tedit's safety mechanisms; they just drive the editor.
+Buffer editing APIs are 1-based and participate in undo/redo:
+
+* `tedit.line_count()`
+* `tedit.get_line(n)`
+* `tedit.set_line(n, text)`
+* `tedit.insert_line(n, text)`: accepts `line_count() + 1` to append
+* `tedit.delete_line(n)`
+* `tedit.append_line(text)`: returns the new line number
+* `tedit.path()`: returns the active path or `nil`
+* `tedit.is_dirty()`
+* `tedit.version`
+
+`tedit.command()` can invoke powerful editor commands, including shell filters and Lua commands. Treat plugins as trusted code running with your user permissions.
 
 ---
 
-## 4. Your First Plugin (Beginner Example)
+## 4. A minimal plugin
 
 Create the plugin directory if it doesn’t exist:
 
@@ -150,7 +158,7 @@ local function main()
   end
 end
 
--- Actually run our main() function
+-- Run the plugin entry point.
 main()
 ```
 
@@ -189,7 +197,7 @@ local function main()
   tedit_command("set number on")
   tedit_command("set autosave 120")
 
-  tedit_echo("Comfy defaults applied ✔")
+  tedit_echo("Comfy defaults applied")
 end
 
 main()
@@ -273,8 +281,28 @@ A theme file must return (or set) a **Lua table** with some string fields that c
 * `help_cmd`
 * `help_arg`
 * `help_text`
+* `syntax_keyword`
+* `syntax_control`
+* `syntax_declaration`
+* `syntax_type`
+* `syntax_builtin`
+* `syntax_function`
+* `syntax_string`
+* `syntax_number`
+* `syntax_literal`
+* `syntax_comment`
+* `syntax_operator`
+* `syntax_preprocessor`
+* `syntax_attribute`
+* `syntax_key`
+* `syntax_tag`
+* `syntax_selector`
+* `syntax_variable`
+* `syntax_punctuation`
 
 Each value should be an ANSI color escape (e.g. `"\27[35m"` for magenta) or an empty string if you don’t want color.
+
+Theme files run in a restricted, instruction-limited Lua state. They cannot access `os`, `io`, `package`, `debug`, or editor commands, and palette values are limited to ANSI SGR color sequences. Use a plugin, not a theme, when executable behavior is required.
 
 > If you don’t know ANSI codes: you can start by tweaking only a couple fields, and letting others inherit from the default. If a field is missing, tedit falls back to its built-in default colors.
 
@@ -296,14 +324,7 @@ local theme = {
   err       = "\27[91m",  -- bright red
   dim       = "\27[90m",  -- bright black / gray
 
-  -- leave others empty to use defaults
-  prompt    = "",         -- default prompt color
-  input     = "",
-  gutter    = "",
-  title     = "",
-  help_cmd  = "",
-  help_arg  = "",
-  help_text = "",
+  -- omitted fields inherit the built-in default palette
 }
 
 return theme
@@ -330,7 +351,7 @@ Here’s a more opinionated theme that tries to be “pink-ish” while still re
 
 ```lua
 -- pink.lua - example Lua theme for tedit
--- NOTE: This only affects tedit's *UI* colors, not syntax highlighting colors per language.
+-- Syntax fields can be overridden independently from the editor UI.
 
 local pink    = "\27[95m"  -- bright magenta / pink
 local hotpink = "\27[35m"  -- magenta
@@ -362,6 +383,15 @@ local theme = {
   help_cmd  = hotpink,  -- command names
   help_arg  = white,    -- arguments
   help_text = dim,      -- explanatory text
+
+  -- Syntax token groups
+  syntax_control     = hotpink,
+  syntax_declaration = pink,
+  syntax_type        = "\27[96m",
+  syntax_function    = "\27[94m",
+  syntax_string      = green,
+  syntax_number      = yellow,
+  syntax_comment     = dim,
 }
 
 -- tedit will read this table and overlay it on the default palette
@@ -520,7 +550,7 @@ When you get a plugin from someone else:
 
 ## 11. Writing “Safer” Plugins (Guidelines)
 
-Here are some conservative guidelines for **beginner-level, relatively safe** plugins:
+Use these guidelines when reviewing plugins:
 
 * **DO:**
 

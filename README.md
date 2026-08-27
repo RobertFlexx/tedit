@@ -1,10 +1,8 @@
-# tedit - A Minimal Yet Mighty Command-Line Text Editor (this is not a shell! it has shell-like behavior.)
+# tedit command-line text editor
 
-`tedit` is a Linux/BSD/MacOS text editor, lightweight, it is not a TUI or GUI, it is a command-line text editor inspired by *ed*/*ex* - with modern safety, syntax highlighting, themes, and quality-of-life extras in one fast, portable binary. Check out [this](https://github.com/Kokonico/medit)! :D
+`tedit` is a lightweight command-line text editor for Linux, BSD, and macOS. Its command model follows `ed` and `ex`, with atomic saves, recovery, syntax highlighting, multiple buffers, Lua plugins, and optional language-server formatting.
 
 > If you are on windows, go [here](https://github.com/RobertFlexx/tedit/tree/tedit-windows)
-
-> psst.. bored? have no computer power for a physics game? dont want gigabytes of bloat? want to soothe your nerves? oh boy well i got the game for you! check out my [PowderSandbox](https://github.com/RobertFlexx/Powder-Sandbox-GameHub) Family, a tree of one powder sandbox written in multiple languages! pick your fire!
 
 ---
 
@@ -19,11 +17,17 @@
   * Undo/Redo stack (up to 200 ops).
   * **Crash recovery & autosave snapshots** (periodic save to `~/.tedit-recover-*`).
 
-* **Smart CLI** Command history, tab completion (commands first-word, filesystem after), and directory-only completion for `cd`.
+* **Smart CLI** Command history, quoted paths, tab completion (commands first-word, filesystem after), and directory-only completion for `cd`.
 
-* **Syntax highlighting (auto-detect)** C/C++, Python, Shell, Ruby, JS/TS, HTML, CSS, JSON (toggle with `highlight on/off`, override via `set lang <name>`).
+* **Comfortable line editing** UTF-8-aware cursor movement, Home/End, Delete, Ctrl+Left/Right, Alt+B/F, Ctrl+U/K/W/L, history arrows, and safe Ctrl+C/Ctrl+D handling.
 
-* **Themes** built-in: `default`, `dark`, `neon`, `matrix`, `paper`, `yellow`, `iceberg` (`theme <name>`). Plus **Lua themes** from `~/tedit-config/themes` (list them with `lua-themes`, load with `theme <name>`).
+* **Semantic syntax highlighting** Language-specific rules distinguish control flow, declarations, types, built-ins, function calls, strings, numbers, literals, comments, operators, attributes, keys, tags, and selectors. Auto-detection covers C/C++, Python, Shell, Ruby, JavaScript/TypeScript, HTML, CSS, JSON, Go, Rust, Java, C#, PHP, Markdown, YAML, TOML, SQL, XML/SVG, Swift, Kotlin, Lua, Perl, R, Makefiles, Dockerfiles, INI files, and diffs. Markdown fences use the lexer named after the opening fence. Toggle highlighting with `highlight on/off` or override detection with `set lang <name>`.
+
+* **Indentation and language servers** `indent [range]` applies built-in language rules. `lsp start <server...>` connects to a stdio language server, and `lsp format` applies server formatting edits through undo.
+
+* **Ed compatibility** `set edmode on` enables a quiet prompt, current-line tracking, classic addresses, `p`/`n`/`d`, append/insert input, `s///`, and ed-style modified-buffer quit warnings.
+
+* **Themes** built-in: `default`, `dark`, `neon`, `matrix`, `paper`, `yellow`, `iceberg`, `ocean`, `solarized`, `gruvbox`, `rose` (`theme <name>`). Plus sandboxed **Lua themes** from `~/tedit-config/themes` (list them with `lua-themes`, load with `theme <name>`).
 
 * **Buffers (multi-file)** `new`, `bnext`, `bprev`, `lsb` to hop between files.
 
@@ -39,16 +43,17 @@
 
   * Run `~/.tedit/hooks/on_save` and `~/.tedit/hooks/on_quit` if present.
   * Optional banner from `~/.tedit_banner`.
-  * Confetti on successful saves (because... joy).
+  * Optional color output and a compact save confirmation.
 
 * **Privileged saves (doas)** If a save fails for permissions, `tedit` can write to a temp file and `doas mv` it into place (configure `doas` as needed).
 
 * **Lua scripting & plugins**
 
-  * Embedded **Lua 5.4** runtime (if built with Lua dev headers/libs).
+  * Embedded **Lua 5.4/5.3/5.2 or LuaJIT** runtime (selected from available development libraries at build time).
   * Lua helpers exposed: `tedit_command(cmd)`, `tedit_echo(text)`, `tedit_print(line_number)`.
-  * Auto-loads `*.lua` files from `~/tedit-config/plugins` at startup.
-  * `:plugins` shows loaded plugins; `:reload-plugins` reloads from disk.
+  * A namespaced API is also available: `tedit.line_count()`, `get_line`, `set_line`, `insert_line`, `delete_line`, `append_line`, `path`, and `is_dirty`.
+  * Scans `*.lua` files from `~/tedit-config/plugins`; execution is explicit via `:run-plugin <name>`.
+  * `:plugins` shows available plugins; `:reload-plugins` rescans the directory.
   * `:lua <code>` runs inline Lua; `:luafile <path>` runs a Lua script file.
   * **Lua themes**: drop `*.lua` files into `~/tedit-config/themes`, list them with `lua-themes`, and apply via `theme <name>`.
 
@@ -99,7 +104,7 @@ Short answer: **safety, atomicity, and predictability.** Longer answer:
 
 ---
 
-## Getting Started (Beginner-Friendly Source Build Guide)
+## Building and installing
 
 ### Install
 
@@ -163,6 +168,7 @@ tedit notes.txt              # open one file
 tedit a.txt b.txt c.txt      # open extra files as buffers
 tedit --version              # print version
 tedit --help                 # print CLI usage
+tedit --no-banner --no-status notes.txt
 tedit                        # start empty, open later
 ```
 
@@ -222,19 +228,23 @@ tedit> wq
 | `read <path> [n]` | Insert file after line *n* |
 | `filter <range> !cmd` | Pipe range through shell and replace |
 | `set` / `set <name> <value>` | Show or change settings |
+| `indent [range]` | Reindent with built-in language rules |
+| `lsp start ...` / `lsp format` / `lsp stop` | Use stdio language-server formatting |
+| `edmode on/off` | Toggle classic ed-compatible behavior |
 | `syntax <name>` | Alias for `set lang <name>` |
 | `theme <name>` / `theme preview` | Apply or preview themes |
 | `highlight on/off` | Toggle syntax highlighting |
 | `alias <from> <to...>` | Define command aliases |
 | `new` / `bnext` / `bprev` / `lsb` / `buffer <n>` / `close` | Multi-buffer workflow |
 | `config` / `recent` / `messages` | Show paths, recent files, or message log |
+| `history` / `aliases` | Show session command history or configured aliases |
 | `diff` | Show changes vs on-disk |
 | `ls [-a] [-l] [path]` / `pwd` / `cd <dir>` | Directory helpers |
 | `clear` | Clear screen and scrollback |
 | `lua <code>` / `luafile <path>` | Run Lua code or a Lua script file |
 | `run-plugin <name>` | Run Lua plugin, invoked as `:run-plugin <name>` |
 | `plugin trust <name|path>` / `plugin trusted` | Manage trusted plugin warning sources |
-| `plugins` / `reload-plugins` | List or reload Lua plugins |
+| `plugins` / `reload-plugins` | List or rescan Lua plugins |
 | `lua-themes` | List Lua themes from `~/tedit-config/themes` |
 
 ---
@@ -251,6 +261,7 @@ backup=on
 autosave=120
 wrap=on
 truncate=off
+status=on
 alias    dd      delete 1-$
 alias    wq!     wq
 ```
@@ -267,21 +278,21 @@ alias    wq!     wq
 **Lua plugins** (optional):
 
 * Stored under `~/tedit-config/plugins`.
-* Any `*.lua` file in that directory is auto-loaded on startup.
-* Use `:plugins` to list them, `:reload-plugins` to re-load without restarting.
+* Any `*.lua` file in that directory is discovered on startup but is not executed automatically.
+* Use `:plugins` to list them, `:reload-plugins` to rescan, and `:run-plugin <name>` to execute one.
 
-### Simple plugin example (even if you don't know Lua)
+### Lua plugin example
 
 Create `~/tedit-config/plugins/hello.lua` with:
 
 ```lua
--- Print a greeting when tedit starts
+-- Print a greeting when this plugin is run.
 if tedit_echo then
   tedit_echo("hello from lua plugin!")
 end
 ```
 
-That’s it. You don’t need to know Lua to use this: just copy the file, change the message text if you like, and restart `tedit`. On startup you should see the greeting.
+Run it with `:run-plugin hello`.
 
 Within Lua you can also:
 
@@ -303,7 +314,7 @@ end
 * Any `*.lua` file there can be selected as a theme with `theme <name>`.
 * Use `lua-themes` inside `tedit` to list Lua themes that are available.
 
-### Simple Lua theme example (copy-paste friendly)
+### Lua theme example
 
 1. Create the folder if it doesn’t exist:
 
@@ -315,7 +326,7 @@ end
 
    ```lua
    -- ~/.tedit-config/themes/pink.lua
-   -- You can copy-paste this even if you don't know Lua.
+   -- Theme fields accept ANSI SGR color sequences.
    -- Save, then in tedit run:  lua-themes   and   theme pink
 
    return {
@@ -331,6 +342,11 @@ end
      help_cmd   = "\27[95m",
      help_arg   = "\27[96m",
      help_text  = "\27[90m",
+     syntax_control  = "\27[95m",
+     syntax_type     = "\27[96m",
+     syntax_function = "\27[94m",
+     syntax_string   = "\27[92m",
+     syntax_comment  = "\27[90m",
    }
    ```
 

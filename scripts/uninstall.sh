@@ -113,7 +113,7 @@ if [ "$TTY" -eq 1 ] && have tput; then
   CURSOR_HIDE="$(tput civis 2>/dev/null || true)"
   CURSOR_SHOW="$(tput cnorm 2>/dev/null || true)"
 fi
-finish_ui(){ [ "$TTY" -eq 1 ] && printf "\r\033[K\n%s" "$CURSOR_SHOW"; }
+finish_ui(){ [ "$TTY" -eq 1 ] && printf "\r\033[K\n%s" "$CURSOR_SHOW"; return 0; }
 trap 'finish_ui; cleanup_tmp' EXIT INT TERM
 
 [ "$TTY" -eq 1 ] && printf "%s" "$CURSOR_HIDE"

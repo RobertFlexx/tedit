@@ -28,6 +28,7 @@ LOG="${LOG_FILE:-$(mktemp_file)}.log"
 : >"$LOG" 2>/dev/null || { echo "ERROR: cannot write log file: $LOG" >&2; exit 2; }
 
 have(){ command -v "$1" >/dev/null 2>&1; }
+shell_quote(){ printf "'%s'" "$(printf %s "$1" | sed "s/'/'\\\\''/g")"; }
 
 TTY=0
 [ -t 1 ] && TTY=1
@@ -148,7 +149,7 @@ if [ "$TTY" -eq 1 ] && have tput; then
   CURSOR_SHOW="$(tput cnorm 2>/dev/null || true)"
 fi
 
-finish_ui(){ [ "$TTY" -eq 1 ] && printf "\r\033[K%s" "$CURSOR_SHOW"; }
+finish_ui(){ [ "$TTY" -eq 1 ] && printf "\r\033[K%s" "$CURSOR_SHOW"; return 0; }
 
 trap 'finish_ui' EXIT INT TERM
 [ "$TTY" -eq 1 ] && printf "%s" "$CURSOR_HIDE"
@@ -526,8 +527,9 @@ fi
 if [ "$PKG" = "nix" ]; then
   [ "$INSTALL_DEPS" -eq 1 ] || die "Nix detected but --no-deps set. Use nix-shell manually."
   info "Building in nix-shell..."
+  TARGET_PREFIX_Q="$(shell_quote "$TARGET_PREFIX")"
   spinner "nix-shell: build + install" nix-shell -p gnumake gcc pkg-config lua --run \
-    "make && make PREFIX='$TARGET_PREFIX' install"
+    "make && make PREFIX=$TARGET_PREFIX_Q install"
   ok "$APP_NAME installed to: $TARGET_PREFIX/bin/$APP_NAME"
   exit 0
 fi
@@ -535,8 +537,9 @@ fi
 if [ "$PKG" = "guix" ]; then
   [ "$INSTALL_DEPS" -eq 1 ] || die "Guix detected but --no-deps set. Use guix shell manually."
   info "Building in guix shell..."
+  TARGET_PREFIX_Q="$(shell_quote "$TARGET_PREFIX")"
   spinner "guix: build + install" guix shell gnu-make gcc-toolchain pkg-config lua -- \
-    make && make PREFIX="$TARGET_PREFIX" install
+    sh -c "make && make PREFIX=$TARGET_PREFIX_Q install"
   ok "$APP_NAME installed to: $TARGET_PREFIX/bin/$APP_NAME"
   exit 0
 fi
@@ -597,10 +600,12 @@ if [ "$INSTALL_MAN" -eq 1 ]; then
   if [ -f "$MAN_SRC" ]; then
     MAN_DIR="${TARGET_PREFIX}/share/man/man1"
     if [ "$(id -u)" -eq 0 ] || [ -z "$SUDO" ] || [ "$TARGET_PREFIX" = "$USER_PREFIX" ]; then
-      spinner "man page" sh -c "mkdir -p '$MAN_DIR' && install -m 0644 '$MAN_SRC' '$MAN_DIR/${APP_NAME}.1'" || true
+      spinner "man directory" mkdir -p "$MAN_DIR" || true
+      spinner "man page" install -m 0644 "$MAN_SRC" "$MAN_DIR/${APP_NAME}.1" || true
       have gzip && spinner "gzip man" gzip -f -9 "$MAN_DIR/${APP_NAME}.1" || true
     else
-      run_root "man page" sh -c "mkdir -p '$MAN_DIR' && install -m 0644 '$MAN_SRC' '$MAN_DIR/${APP_NAME}.1'" || true
+      run_root "man directory" mkdir -p "$MAN_DIR" || true
+      run_root "man page" install -m 0644 "$MAN_SRC" "$MAN_DIR/${APP_NAME}.1" || true
       have gzip && run_root "gzip man" gzip -f -9 "$MAN_DIR/${APP_NAME}.1" || true
     fi
   else

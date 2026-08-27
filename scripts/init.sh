@@ -85,6 +85,7 @@ next(){ STEP=$((STEP+1)); [ "$STEP" -gt "$TOTAL" ] && STEP="$TOTAL"; draw_bar "$
 
 finish_ui(){
   [ "$TTY" -eq 1 ] && printf "\r\033[K\n"
+  return 0
 }
 trap 'finish_ui' EXIT INT TERM
 

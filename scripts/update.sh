@@ -21,6 +21,7 @@ LOG="${LOG_FILE:-$(mktemp_file)}.log"
 : >"$LOG" 2>/dev/null || { echo "ERROR: cannot write log: $LOG" >&2; exit 2; }
 
 have(){ command -v "$1" >/dev/null 2>&1; }
+shell_quote(){ printf "'%s'" "$(printf %s "$1" | sed "s/'/'\\\\''/g")"; }
 
 TTY=0; [ -t 1 ] && TTY=1
 
@@ -47,7 +48,7 @@ info(){ say "${CYAN}${BOLD}::${RESET} $*"; }
 warn(){ say "${YELLOW}${BOLD}!${RESET} $*"; }
 err(){  say "${RED}${BOLD}x${RESET} $*"; }
 
-finish_ui(){ [ "$TTY" -eq 1 ] && printf "\r\033[K%s" "$CURSOR_SHOW"; }
+finish_ui(){ [ "$TTY" -eq 1 ] && printf "\r\033[K%s" "$CURSOR_SHOW"; return 0; }
 
 die(){
   finish_ui 2>/dev/null || :
@@ -546,6 +547,7 @@ fi
 # Install
 TARGET_PREFIX="$(choose_prefix)"
 info "Install prefix: $TARGET_PREFIX"
+TARGET_PREFIX_Q="$(shell_quote "$TARGET_PREFIX")"
 
 if [ "$NO_INSTALL" -eq 0 ]; then
   if [ "$TARGET_PREFIX" = "$DEFAULT_PREFIX" ] && [ "$(id -u)" -ne 0 ] && [ -z "$SUDO" ]; then
@@ -553,9 +555,9 @@ if [ "$NO_INSTALL" -eq 0 ]; then
   fi
 
   if [ "$(id -u)" -eq 0 ] || [ "$TARGET_PREFIX" = "$USER_PREFIX" ] || [ -z "$SUDO" ]; then
-    spinner "Installing..." "$MAKE_BIN PREFIX='$TARGET_PREFIX' install" || die "Install failed."
+    spinner "Installing..." "$MAKE_BIN PREFIX=$TARGET_PREFIX_Q install" || die "Install failed."
   else
-    run_root "Installing..." "$MAKE_BIN PREFIX='$TARGET_PREFIX' install" || die "Install failed."
+    run_root "Installing..." "$MAKE_BIN PREFIX=$TARGET_PREFIX_Q install" || die "Install failed."
   fi
   ok "Installed"
 else
@@ -566,20 +568,23 @@ fi
 if [ "$DO_STRIP" -eq 1 ] && have strip; then
   BIN="${TARGET_PREFIX}/bin/${APP_NAME}"
   if [ -e "$BIN" ]; then
-    spinner "Stripping binary..." "${SUDO:+$SUDO }strip '$BIN' 2>/dev/null || true"
+    BIN_Q="$(shell_quote "$BIN")"
+    spinner "Stripping binary..." "${SUDO:+$SUDO }strip $BIN_Q 2>/dev/null || true"
   fi
 fi
 
 # Man page
 if [ "$INSTALL_MAN" -eq 1 ]; then
-  if [ -f "./${APP_NAME}.1" ]; then
+  MAN_SRC="mandoc/${APP_NAME}.1"
+  if [ -f "$MAN_SRC" ]; then
     MAN_DIR="${TARGET_PREFIX}/share/man/man1"
+    MAN_DIR_Q="$(shell_quote "$MAN_DIR")"
     if [ "$(id -u)" -eq 0 ] || [ "$TARGET_PREFIX" = "$USER_PREFIX" ] || [ -z "$SUDO" ]; then
-      spinner "Man page..." "mkdir -p '$MAN_DIR' && install -m 0644 './${APP_NAME}.1' '$MAN_DIR/${APP_NAME}.1'" || true
-      have gzip && spinner "Compressing man..." "gzip -f -9 '$MAN_DIR/${APP_NAME}.1' 2>/dev/null || true" || true
+      spinner "Man page..." "mkdir -p $MAN_DIR_Q && install -m 0644 '$MAN_SRC' $MAN_DIR_Q/${APP_NAME}.1" || true
+      have gzip && spinner "Compressing man..." "gzip -f -9 $MAN_DIR_Q/${APP_NAME}.1 2>/dev/null || true" || true
     else
-      run_root "Man page..." "mkdir -p '$MAN_DIR' && install -m 0644 './${APP_NAME}.1' '$MAN_DIR/${APP_NAME}.1'" || true
-      have gzip && run_root "Compressing man..." "gzip -f -9 '$MAN_DIR/${APP_NAME}.1' 2>/dev/null || true" || true
+      run_root "Man page..." "mkdir -p $MAN_DIR_Q && install -m 0644 '$MAN_SRC' $MAN_DIR_Q/${APP_NAME}.1" || true
+      have gzip && run_root "Compressing man..." "gzip -f -9 $MAN_DIR_Q/${APP_NAME}.1 2>/dev/null || true" || true
     fi
   else
     warn "No man page in repo; skipping"

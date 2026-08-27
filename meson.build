@@ -18,7 +18,7 @@ if get_option('b_ndebug') != 'true'
 endif
 
 lua_dep = dependency('', required: false)
-foreach lua_name : ['lua5.4', 'lua5.3', 'lua', 'luajit']
+foreach lua_name : ['lua5.4', 'lua5.3', 'lua5.2', 'lua', 'luajit']
   if not lua_dep.found()
     lua_dep = dependency(lua_name, required: false)
   endif
@@ -38,5 +38,12 @@ executable(
   dependencies: [lua_dep, dl_dep, m_dep],
   install: true,
 )
+
+highlight_test = executable(
+  'highlight-test',
+  'tests/highlight_test.cpp',
+  dependencies: [lua_dep, dl_dep, m_dep],
+)
+test('semantic highlighting', highlight_test)
 
 install_man('mandoc/tedit.1')

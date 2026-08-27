@@ -27,6 +27,11 @@ and
 .BR ex (1),
 but enhanced with modern features such as syntax highlighting, undo/redo history,
 atomic saves, backups, autosave snapshots, themes, and hooks.
+.PP
+The \fBindent\fR command provides language-aware indentation. A stdio language
+server can be started with \fBlsp start\fR and used for undoable document
+formatting with \fBlsp format\fR. \fBset edmode on\fR enables classic ed-style
+addresses and command behavior with quiet output.
 .P
 It provides a clean, scriptable command interface with familiar operations
 for editing, searching, replacing, and filtering text ranges, all in a single
@@ -45,13 +50,18 @@ Crash recovery and autosave snapshots written periodically to files such as
 .IP [bu]
 Undo/redo stack with up to 200 operations.
 .IP [bu]
-Syntax highlighting with auto-detection for C/C++, Python, Shell, Ruby, JS/TS,
-HTML, CSS, JSON, and more. Highlighting can be toggled via
+Semantic syntax highlighting with distinct colors for control flow,
+declarations, types, built-ins, functions, strings, literals, comments,
+attributes, keys, tags, and selectors. Auto-detection covers C/C++, Python,
+Shell, Ruby, JS/TS, HTML, CSS, JSON, Go, Rust, Java, C#, PHP, Markdown, YAML,
+TOML, SQL, XML/SVG, Swift, Kotlin, Lua, Perl, R, Makefiles, Dockerfiles, INI,
+and diffs. Highlighting can be toggled via
 \fB:highlight on\fR/\fBoff\fR and overridden with
 \fB:set lang <name>\fR.
 .IP [bu]
 Configurable themes and color schemes (e.g. \fBdefault\fR, \fBdark\fR,
-\fBneon\fR, \fBmatrix\fR, \fBpaper\fR, \fByellow\fR, \fBiceberg\fR) using
+\fBneon\fR, \fBmatrix\fR, \fBpaper\fR, \fByellow\fR, \fBiceberg\fR,
+\fBocean\fR, \fBsolarized\fR, \fBgruvbox\fR, and \fBrose\fR) using
 \fB:theme <name>\fR for built-in themes, plus Lua-based themes loaded from
 \fI~/tedit-config/themes/<name>.lua\fR.
 .IP [bu]
@@ -125,7 +135,7 @@ A typical workflow is to \fBcd\fR into a project directory and then run
 so that atomic saves stay on the same filesystem and filters, hooks, and
 relative paths behave predictably.
 .SH FILES
-.IP "~/tedit-config/.teditrc"
+.IP "~/.teditrc"
 Configuration file for preferences (theme, line numbers, autosave, wrapping,
 etc.).
 .IP "~/tedit-config/plugins"
@@ -210,7 +220,7 @@ TEDIT_REPO="/path/to/tedit" sudo tedit-update
 .SH UNINSTALL FLAGS
 .TP
 .B --purge-user-data
-Remove \fI~/tedit-config/.teditrc\fR, \fI~/.tedit_banner\fR, \fI~/.tedit/hooks\fR, and
+Remove \fI~/.teditrc\fR, \fI~/.tedit_banner\fR, \fI~/.tedit/hooks\fR, and
 \fI~/.tedit-recover-*\fR.
 .TP
 .B --purge-repo
@@ -223,7 +233,7 @@ Do both \fB--purge-user-data\fR and \fB--purge-repo\fR.
 .B -y, --yes
 Assume "yes" to prompts (non-interactive).
 .SH CONFIGURATION
-Configuration options are set in \fI~/tedit-config/.teditrc\fR:
+Configuration options are set in \fI~/.teditrc\fR:
 .PP
 .EX
 theme=neon
@@ -248,20 +258,18 @@ Execute an inline Lua snippet.
 Load and execute a Lua script from the given path.
 .TP
 .B :plugins
-List the names of successfully loaded Lua plugins.
+List available Lua plugins discovered in the plugin directory.
 .TP
 .B :reload-plugins
-Rescan and reload \fB*.lua\fR files from the plugin directory.
+Rescan \fB*.lua\fR files from the plugin directory.
 .TP
 .B :lua-themes
 List available Lua theme files (by name) from \fI~/tedit-config/themes\fR.
 .PP
 Plugins are simple Lua files placed under
 .IR ~/tedit-config/plugins .
-At startup,
-.B tedit
-will attempt to load each \fB*.lua\fR file once; any error messages are printed
-inside the editor.
+At startup, \fBtedit\fR scans plugin names; plugins execute only when explicitly
+invoked with \fB:run-plugin\fR.
 .PP
 Lua-based themes are stored separately under
 .IR ~/tedit-config/themes .
@@ -277,12 +285,19 @@ tedit prompt.
 .IP \[bu]
 \fBtedit_print(line)\fR - print a specific line from the current buffer.
 .PP
-Lua plugins and themes run with the same privileges as your user account and
-can execute arbitrary code (including shell commands and file I/O). Treat
-third-party Lua code as untrusted unless you have reviewed it. \fBtedit\fR
+The namespaced \fBtedit\fR table also provides \fBline_count\fR,
+\fBget_line\fR, \fBset_line\fR, \fBinsert_line\fR, \fBdelete_line\fR,
+\fBappend_line\fR, \fBpath\fR, and \fBis_dirty\fR. Buffer edits participate in
+undo and redo.
+.PP
+Lua plugins run with the same privileges as your user account and can execute
+arbitrary code (including shell commands and file I/O). Treat third-party Lua
+code as untrusted unless you have reviewed it. \fBtedit\fR
 performs a lightweight scan for obviously dangerous patterns (such as
 \fBos.execute\fR, \fBio.popen\fR, \fBdofile\fR, and similar) when loading
 plugins, but this is only a convenience warning, not a security guarantee.
+Lua themes run separately in a restricted, instruction-limited state without
+OS, I/O, package, debug, or editor-command APIs.
 .SH ENVIRONMENT
 .TP
 .B TEDIT_REPO
