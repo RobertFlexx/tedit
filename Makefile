@@ -129,11 +129,14 @@ format:
 $(HIGHLIGHT_TEST): tests/highlight_test.cpp $(SRC_ALL)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ tests/highlight_test.cpp $(LDFLAGS) $(LDLIBS)
 
-test: $(TARGET) $(HIGHLIGHT_TEST)
+test-scripts:
+	python3 tests/scripts_test.py
+
+test: $(TARGET) $(HIGHLIGHT_TEST) test-scripts
 	./$(HIGHLIGHT_TEST)
 	sh tests/regression.sh
 
 clean:
 	@$(RM) $(OBJ) $(TARGET) $(HIGHLIGHT_TEST)
 
-.PHONY: all release debug run install uninstall clean format strip print-vars test
+.PHONY: all release debug run install uninstall clean format strip print-vars test test-scripts

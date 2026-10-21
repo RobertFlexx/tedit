@@ -1,4 +1,4 @@
-#define TEDIT_VERSION "2.3.0"
+#define TEDIT_VERSION "2.3.1"
 #include <algorithm>
 #include <cctype>
 #include <cerrno>

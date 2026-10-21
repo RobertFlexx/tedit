@@ -8,7 +8,7 @@
 
 ## Highlights (What’s New & Notable)
 
-* **Fast, simple, dependency-free** - pure C++17 single binary.
+* **Small C++17 executable** with embedded Lua scripting.
 
 * **Modern safety**
 
@@ -61,15 +61,27 @@ For more information about Plugins & Themes for Tedit, see [here](https://github
 
 ---
 
-## Clone & Use the Tools (with sudo, git clone project first)
+## Install from source
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/RobertFlexx/tedit/main/scripts/install.sh | sh
+```
+
+No clone required: the script fetches and builds tedit from source, installs the
+binary and man page, then cleans up. Regular users install into `~/.local`;
+root or `--system` uses `/usr/local`. Missing dependencies use the native package
+manager through sudo/doas when needed. To pass options, use `sh -s -- --system`
+(or `--prefix PATH`, `--ref TAG`) at the end of the curl command.
+
+## Clone & Use the Tools
 
 ```bash
 git clone https://github.com/RobertFlexx/tedit
 cd tedit
-sudo sh scripts/init.sh    # one-time: installs PATH wrappers (tedit-install/update/uninstall)
-sudo tedit-install    # build + install to /usr/local/bin
-sudo tedit-update     # fetch latest updates, rebuild, reinstall
-sudo tedit-uninstall  # remove binary + man page + PATH entry
+sh scripts/init.sh        # install optional wrappers into ~/.local/bin
+tedit-install             # build + install to ~/.local
+tedit-update              # fetch, fast-forward, rebuild and reinstall
+tedit-uninstall           # remove this installation
 ```
 
 ### What `scripts/init.sh` does (one-time, must run in git directory)
@@ -109,35 +121,39 @@ Short answer: **safety, atomicity, and predictability.** Longer answer:
 ### Install
 
 ```bash
-sudo tedit-install    # or: sudo sh scripts/install.sh
+sh scripts/install.sh          # per-user install from this checkout
+sh scripts/install.sh --system # install into /usr/local using sudo/doas as needed
 ```
 
 This script will:
 
 1. Detect your package manager (apt, dnf, pacman, eopkg, etc.).
-2. Install build dependencies if missing (`make`, `g++`, etc.).
-3. Build `tedit`.
-4. Install it to `/usr/local/bin` (or `~/.local/bin` if you don’t have sudo/doas).
+2. Verify GNU make, C++17 filesystem support, and Lua headers/libraries; install build dependencies if needed.
+3. Rebuild `tedit` from source, including when local build outputs already exist.
+4. Install it to `~/.local/bin` for a regular user, or `/usr/local/bin` for root/`--system`.
 5. Add it to your PATH if needed.
 
 ### Update
 
 ```bash
-sudo tedit-update     # or: sudo sh scripts/update.sh
+tedit-update     # or: sh scripts/update.sh
 ```
 
 This checks for git updates. If `tedit` is already current, it will say:
 
 ```
-Tedit is up to date.
+Up to date.
 ```
 
-Otherwise, it will pull the latest changes, rebuild, and reinstall automatically.
+Otherwise, it fast-forwards the configured upstream branch and uses the same
+installer to rebuild and reinstall. Incoming updates require a clean working
+tree; dirty or diverged trees are left intact with an error. Use `--no-pull` to
+rebuild local edits.
 
 ### Uninstall
 
 ```bash
-sudo tedit-uninstall  # or: sudo sh scripts/uninstall.sh
+tedit-uninstall  # or: sh scripts/uninstall.sh
 ```
 
 This cleanly removes `tedit` from your system and any PATH entries added by the installer.
@@ -159,7 +175,9 @@ meson compile -C build
 sudo meson install -C build
 ```
 
-> Requires a C++17 compiler (e.g., `g++`). Works on Linux/macOS/BSD. Windows users: use WSL.
+> Requires GNU make, a C++17 compiler with filesystem support, and Lua development
+> headers/libraries. Meson also requires Meson and Ninja. Works on Linux/macOS/BSD.
+> Windows users: use WSL.
 
 ### Open a file
 
@@ -419,189 +437,78 @@ BSD-3-Clause. Have fun, keep the notice, and ship great things. :P
 
 ---
 
-## Tooling UX (Installer/Updater/Uninstaller)
-
-### What changed (TL;DR)
-
-* **Cinematic UI:** one clean progress bar + subtle spinner for long steps (TTY-aware).
-* **Smarter deps:** detects your package manager and installs only what’s missing.
-* **Gentoo note:** clearly shown in **yellow** when emerging toolchains (may be interactive).
-* **Quiet git:** updater keeps git chatter in a log; your terminal stays neat.
-* **“Up to date.”** Updater checks the remote; if nothing to pull, it prints exactly that.
-* **Repo auto-discovery:** wrappers/update can find your clone even when run from anywhere.
-
----
-
-### Using the Wrappers (recommended)
-
-After you run `scripts/init.sh` once (in the repo), you can do everything from anywhere:
-
-```bash
-# Build + install (system-wide)
-sudo tedit-install        # or: doas tedit-install
-
-# Update (pull, rebuild, reinstall)
-sudo tedit-update         # prints "Up to date." if there’s nothing new
-
-# Uninstall (clean removal)
-sudo tedit-uninstall
-```
-
-> No sudo/doas? The tools auto-fallback to **user installs** under `~/.local` when possible.
-
----
-
-### Install (cinematic)
-
-```bash
-# From inside the clone:
-sudo sh scripts/install.sh # uses a cinematic bar + spinner
-# or with wrappers after scripts/init.sh:
-sudo tedit-install
-```
-
-What it does:
-
-1. Detects your **package manager** (apt, dnf/yum, pacman, zypper, apk, xbps-install, eopkg, emerge, brew).
-2. Installs **missing deps only** (`make`, a C++17 compiler, etc.).
-3. Builds and installs to `/usr/local/bin` (or `~/.local/bin` without sudo/doas).
-4. Installs the **man page** (if present) and refreshes the man DB (best-effort).
-5. Adds the install bin dir to your **PATH** if needed.
-
-**Gentoo:** you'll see `Gentoo detected - emerging toolchain (may be interactive).` in yellow.
-
----
-
-### Update (smart + quiet)
-
-```bash
-# From anywhere (after scripts/init.sh):
-sudo tedit-update
-# Or directly in the repo:
-sudo sh scripts/update.sh
-```
-
-What it does:
-
-* **Scans dependencies** first and installs what’s missing.
-* Warms up sudo/doas once to avoid surprise prompts mid-spinner.
-* **Quietly fetches** remote changes, compares your HEAD to upstream, and:
-
-  * Prints **`Up to date.`** if there’s nothing to pull.
-  * Otherwise, pulls/rebases, **auto-stashes** dirty trees and restores them after.
-* Rebuilds and reinstalls with the same cinematic UI.
-* Strips the binary (if `strip` exists).
-
-> Tip: if your wrappers ever lose track of the repo path, set it once:
-
-```bash
-sudo mkdir -p /usr/local/share/tedit
-printf '%s\n' "/absolute/path/to/your/tedit" | sudo tee /usr/local/share/tedit/repo >/dev/null
-```
-
-Or export per-call:
-
-```bash
-TEDIT_REPO="/absolute/path/to/tedit" sudo tedit-update
-```
-
----
-
-### Uninstall (now with purge options)
-
-```bash
-# Simple:
-sudo tedit-uninstall
-
-# Advanced (from repo or wrapper):
-sudo sh scripts/uninstall.sh --purge-user-data     # remove ~/.tedit* (rc, banner, hooks, recover)
-sudo sh scripts/uninstall.sh --purge-repo -y       # also remove THIS git repo directory (no prompt)
-sudo sh scripts/uninstall.sh --purge --yes         # both of the above, non-interactive
-```
-
-The uninstaller:
-
-* Removes the binary from common bin dirs and anywhere on `PATH`.
-* Removes wrappers (`tedit-install/update/uninstall`).
-* Cleans manpages, PATH lines added by the installer, and local build droppings.
-* Refreshes the man database (best-effort).
-* Supports **purge flags** (see above).
-
----
-
-### Verbose mode & Logs
-
-* Set `VERBOSE=1` to stream command output instead of the spinner:
-
-  ```bash
-  VERBOSE=1 sudo sh scripts/install.sh
-  VERBOSE=1 sudo sh scripts/update.sh
-  ```
-* All runs write detailed logs:
-
-  * Install: `/tmp/tedit-install.<XXXXXX>.log`
-  * Update:  `/tmp/tedit-update.<XXXXXX>.log`
-  * Uninstall: `/tmp/tedit-uninstall.<XXXXXX>.log`
-
-If something acts cursed, share the **last ~60 lines** of the relevant log.
-
----
+## Tooling (Installer/Updater/Uninstaller)
 
 ### Supported Package Managers (auto-detected)
 
-* **Debian/Ubuntu** (`apt`)
-* **Fedora/RHEL/CentOS/Rocky/Alma** (`dnf`/`yum`)
+* **Debian/Ubuntu and derivatives** (`apt-get`)
+* **Fedora/RHEL-compatible systems** (`dnf`/`yum`)
 * **Arch/Manjaro/Endeavour/Artix** (`pacman`)
 * **openSUSE/SLES** (`zypper`)
-* **Alpine/Chimera** (`apk`)
+* **Alpine/postmarketOS/Chimera** (`apk`)
 * **Void** (`xbps-install`)
 * **Solus** (`eopkg`)
-* **Gentoo** (`emerge`) - **yellow note**; may be interactive
-* **macOS** (`brew`) - may require **Xcode Command Line Tools**
+* **Gentoo** (`emerge`)
+* **FreeBSD/DragonFly, OpenBSD, NetBSD** (`pkg`, `pkg_add`, `pkgin`)
+* **macOS** (`brew`/`port`) - requires Xcode Command Line Tools
 
----
+Dependencies are GNU make, a C++17 compiler with filesystem support, and Lua
+development headers/libraries. The installer checks these by compiling and
+linking, installs native packages if needed, and checks again before continuing.
+Distro derivatives use `ID_LIKE`. On NixOS or Guix, enter a build environment
+with make, a C++ compiler, pkg-config, Lua and Git, then use `--no-deps`.
 
-### Do I need root?
+### Common options
 
-* **System-wide** install/update/uninstall: use `sudo` **or** `doas`.
-* **Per-user** install when you don’t have privileges: the scripts automatically target `~/.local/bin` and ensure it’s on your `PATH`.
-
----
-
-### Wrapper Internals (FYI)
-
-* `scripts/init.sh` records the repo path so wrappers can **cd into the clone** before running tools.
-* `scripts/update.sh` can also discover the repo via:
-
-  * `TEDIT_REPO=/path/to/tedit`
-  * Marker file: `/usr/local/share/tedit/repo`
-  * Common fallback: `$HOME/tedit`
-
-This keeps `tedit-update` working even if you call it from a random directory.
-
----
-
-### Common Tasks (tooling quickies)
-
-```bash
-# Fresh setup
-git clone https://github.com/RobertFlexx/tedit
-cd tedit
-sudo sh scripts/init.sh
-sudo tedit-install
-
-# Update later
-sudo tedit-update
-
-# Local-only install (no sudo)
-sh scripts/install.sh
-
-# Nuke everything (careful)
-sudo sh scripts/uninstall.sh --purge --purge-repo -y
+```sh
+sh scripts/install.sh --deps-only                  # dependencies only
+sh scripts/install.sh --no-deps                    # use existing dependencies
+sh scripts/install.sh --prefix "$HOME/apps/tedit" # custom install
+sh scripts/install.sh --no-man --no-strip --no-path
+sh scripts/update.sh --no-pull                     # rebuild local edits
+sh scripts/update.sh --no-install                  # fetch/build only
+sh scripts/uninstall.sh --dry-run                  # preview removal
 ```
 
----
+`PREFIX` also selects a prefix. `TEDIT_REPO` selects an existing checkout;
+`TEDIT_REPO_URL` and `TEDIT_REF` select the source URL and branch/tag when cloning.
+`CXX`, `MAKE`, `PKG_CONFIG`, `LUA_CFLAGS` and `LUA_LIBS` can override detection.
+Use `--help` on any script for its full options.
 
-### Troubleshooting
+### Wrappers and updates
 
-* **`Up to date.` but your local changes aren’t present?** You’re already on the latest commit. If you expected different code, check your remote/branch or run `git remote -v && git status
+Run `scripts/init.sh` once to install wrappers. Use `--system`, `--user`, or
+`--bin-dir PATH` to select their destination. `--show` prints paths without
+installing; `--force` replaces existing commands not generated by tedit.
+User wrappers record the checkout in `${XDG_DATA_HOME:-$HOME/.local/share}/tedit/repo`;
+system wrappers use `/usr/local/share/tedit/repo`. Rerun init after moving a clone,
+or set `TEDIT_REPO=/absolute/path/to/tedit` for a single invocation.
+
+Updates use the configured Git upstream and accept only fast-forwards. Incoming
+changes require a clean tree; local work and diverged history are preserved.
+`--no-pull` builds local edits. `Up to date.` requires a successful installation
+of the current revision. Fetch, dependency, build and install failures return
+an error and leave details in the log.
+
+### Uninstall and purge
+
+Uninstall removes the selected prefix's binary, manual, generated wrappers,
+metadata and matching PATH entries. Custom wrapper directories use `--bin-dir`.
+`--dry-run` leaves files, profiles and data untouched. Package-owned files and
+unrecognized wrappers require `--force`. Local build directories are retained.
+
+```sh
+sh scripts/uninstall.sh --purge-user-data  # config, plugins, themes and recovery files
+sh scripts/uninstall.sh --purge-repo -y    # permanently delete the source checkout
+sh scripts/uninstall.sh --purge --yes      # both; cannot be undone
+```
+
+Repository deletion requires confirmation, or `--yes` without a terminal.
+
+### Verbose mode & Logs
+
+Use `--verbose` or `VERBOSE=1` to show successful command output. Errors are
+always shown. Logs are kept at `/tmp/tedit-<action>.log.<random>` (or `$TMPDIR`);
+set `LOG_FILE=/path/to/log` to choose a location. If something fails, share the
+last ~60 lines of that log. Run `make test-scripts` for the tooling regression
+suite, or `make test` for all tests (Python 3 required).

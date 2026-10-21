@@ -1,4 +1,4 @@
-.TH TEDIT 1 "June 10, 2026" "tedit 2.2.0" "User Commands"
+.TH TEDIT 1 "October 21, 2026" "tedit 2.3.1" "User Commands"
 .SH NAME
 tedit - a minimal yet mighty command-line text editor
 .SH SYNOPSIS
@@ -154,37 +154,39 @@ Optional banner file printed on startup.
 .IP "~/.tedit-recover-*"
 Autosave recovery snapshots, used for crash recovery.
 .SH TOOLS
-The repository includes helper scripts with a cinematic progress bar and spinner.
-These tools detect your package manager, install missing build dependencies, and
-log verbosely to temporary files.
+The repository includes helper scripts that check build dependencies, report
+failed commands, and retain detailed logs.
 .TP
 .B scripts/install.sh
-Detects dependencies (\fBmake\fR, a C++17 compiler, etc.), builds, and installs
-\fBtedit\fR automatically with a progress display. On systems using Gentoo,
-shows a yellow note and may run an interactive \fBemerge\fR. Installs to
-\fI/usr/local/bin\fR when run with privileges, or \fI~/.local/bin\fR without.
+Checks GNU make, C++17 filesystem support, and Lua development libraries;
+fetches source when no checkout is available, then builds and installs tedit.
+Regular users install into \fI~/.local\fR; root or \fB--system\fR uses
+\fI/usr/local\fR. Use \fB--prefix PATH\fR for a custom destination.
 .TP
 .B scripts/update.sh
-Checks for git updates quietly; if none are available it prints exactly:
+Checks the configured Git upstream; a successfully installed current revision prints:
 \fIUp to date.\fR
-Otherwise it pulls (preferring rebase), rebuilds, reinstalls, and optionally
-strips the binary. Local uncommitted changes are auto-stashed and restored.
+Otherwise it fast-forwards, rebuilds, and reinstalls. Incoming updates require
+a clean working tree. Dirty or diverged trees are preserved; \fB--no-pull\fR
+rebuilds local edits.
 .TP
 .B scripts/uninstall.sh
 Removes \fBtedit\fR, man pages, installer wrappers, PATH entries added by the
-installer, and local build artifacts. Supports purge flags (see below).
+installer, and installation metadata in the selected prefix. Local build
+directories are retained. \fB--dry-run\fR leaves files and profiles untouched.
+Supports purge flags (see below).
 .PP
 The scripts write logs to:
 .PP
 .RS
 .EX
-/tmp/tedit-install.XXXXXX.log
-/tmp/tedit-update.XXXXXX.log
-/tmp/tedit-uninstall.XXXXXX.log
+/tmp/tedit-install.log.XXXXXX
+/tmp/tedit-update.log.XXXXXX
+/tmp/tedit-uninstall.log.XXXXXX
 .EE
 .RE
 .PP
-Set \fBVERBOSE=1\fR to stream command output instead of using the spinner.
+Set \fBVERBOSE=1\fR to show successful command output as well as errors.
 .SH WRAPPERS
 After running \fBscripts/init.sh\fR once inside the repo, small wrapper commands are
 installed to your PATH so you can run project tools from anywhere:
@@ -199,8 +201,8 @@ tedit-uninstall
 .EE
 .RE
 .PP
-Wrappers remember the repo location and \fBcd\fR into it before executing
-\fBscripts/install.sh\fR/\fBscripts/update.sh\fR/\fBscripts/uninstall.sh\fR, keeping builds predictable.
+Wrappers remember the repo location and execute
+\fBscripts/install.sh\fR/\fBscripts/update.sh\fR/\fBscripts/uninstall.sh\fR from anywhere.
 .PP
 If a wrapper loses track of the repo, you can point it at the correct clone by
 creating a marker file or using an environment variable:

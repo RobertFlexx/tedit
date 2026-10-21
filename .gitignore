@@ -1,0 +1,4 @@
+/tedit
+/src/*.o
+/tests/highlight_test
+/build/

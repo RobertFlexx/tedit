@@ -1,640 +1,555 @@
 #!/usr/bin/env sh
+# Read the complete entry point before starting commands when used via curl | sh.
+# shellcheck shell=sh
+main() {
 set -eu
+set -f
 
-APP_NAME="tedit"
-DEFAULT_PREFIX="/usr/local"
-USER_PREFIX="${PREFIX:-$HOME/.local}"
+have() { command -v "$1" >/dev/null 2>&1; }
+say() { printf '%s\n' "$*"; printf '%s\n' "$*" >>"$LOG"; }
+die() { say "ERROR: $*" >&2; say "Log: $LOG" >&2; exit 1; }
+shell_quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
 
-# -----------------------------
-# Basics
-# -----------------------------
-SCRIPT_DIR=$(
-  CDPATH= cd -P -- "$(dirname -- "$0")" 2>/dev/null && pwd
-)
-REPO_DIR=$(CDPATH= cd -P -- "$SCRIPT_DIR/.." 2>/dev/null && pwd)
-cd "$REPO_DIR" || { echo "ERROR: cannot cd to $REPO_DIR" >&2; exit 2; }
-
-mktemp_file() {
-  if tmp=$(mktemp "${TMPDIR:-/tmp}/${APP_NAME}-install.XXXXXX" 2>/dev/null); then
-    printf "%s" "$tmp"; return 0
-  fi
-  if tmp=$(mktemp -t "${APP_NAME}-install" 2>/dev/null); then
-    printf "%s" "$tmp"; return 0
-  fi
-  printf "%s" "${TMPDIR:-/tmp}/${APP_NAME}-install.$(date +%s).$$"
-}
-
-LOG="${LOG_FILE:-$(mktemp_file)}.log"
-: >"$LOG" 2>/dev/null || { echo "ERROR: cannot write log file: $LOG" >&2; exit 2; }
-
-have(){ command -v "$1" >/dev/null 2>&1; }
-shell_quote(){ printf "'%s'" "$(printf %s "$1" | sed "s/'/'\\\\''/g")"; }
-
-TTY=0
-[ -t 1 ] && TTY=1
-
-# -----------------------------
-# Colors
-# -----------------------------
-NO_COLOR="${NO_COLOR-}"
-if [ "$TTY" -eq 1 ] && [ -z "$NO_COLOR" ] && have tput; then
-  BOLD="$(tput bold 2>/dev/null || true)"
-  RESET="$(tput sgr0 2>/dev/null || true)"
-  RED="$(tput setaf 1 2>/dev/null || true)"
-  GREEN="$(tput setaf 2 2>/dev/null || true)"
-  YELLOW="$(tput setaf 3 2>/dev/null || true)"
-  CYAN="$(tput setaf 6 2>/dev/null || true)"
-else
-  BOLD=""; RESET=""; RED=""; GREEN=""; YELLOW=""; CYAN=""
-fi
-
-# -----------------------------
-# Output helpers (always visible + always logged)
-# -----------------------------
-log_line(){ printf "%s\n" "$*" >>"$LOG"; }
-
-say(){ printf "%s\n" "$*"; log_line "$*"; }
-ok(){  say "${GREEN}${BOLD}✓${RESET} $*"; }
-info(){ say "${CYAN}${BOLD}::${RESET} $*"; }
-warn(){ say "${YELLOW}${BOLD}!${RESET} $*"; }
-err(){  say "${RED}${BOLD}x${RESET} $*"; }
-
-die(){
-  finish_ui 2>/dev/null || :
-  err "ERROR: $*"
-  say "Log: $LOG"
-  exit 1
-}
-
-# -----------------------------
-# Options
-# -----------------------------
-VERBOSE="${VERBOSE-0}"
-INSTALL_DEPS=1
-DEPS_ONLY=0
-INSTALL_MAN=1
-DO_STRIP=1
-UPDATE_PATH=1
-FORCE_PREFIX_MODE="auto"  # auto|system|user
-CUSTOM_PREFIX=""
-
-usage(){
-  cat <<EOF
-$APP_NAME installer
+usage() {
+  cat <<'EOF'
+tedit source installer
 
 Usage:
-  ./scripts/install.sh [options]
+  sh scripts/install.sh [options]
+  curl -fsSL https://raw.githubusercontent.com/RobertFlexx/tedit/main/scripts/install.sh | sh -s -- [options]
 
 Options:
-  --prefix PATH      Install prefix (default: $DEFAULT_PREFIX, or user prefix if not root)
-  --system           Force system install (needs root)
-  --user             Force user install (~/.local)
-  --no-deps          Do not install dependencies automatically
-  --deps-only        Only install dependencies, then exit
-  --no-man           Skip man page install
-  --no-strip         Skip stripping binary
-  --no-path          Do not edit shell profiles for PATH
-  --verbose          More output (also logs)
-  -h, --help         Show this help
+  --prefix PATH      Install into PATH (also accepts PREFIX)
+  --system           Install into /usr/local; elevate only when needed
+  --user             Install into ~/.local (default for non-root users)
+  --repo PATH        Build an existing checkout (also accepts TEDIT_REPO)
+  --ref REF          Branch or tag to clone if no local source (default: main)
+  --no-deps          Never install packages
+  --deps-only        Check/install build dependencies without fetching or building
+  --with-git         Also ensure git is installed (used by the updater)
+  --no-build         Install an existing local build
+  --no-install       Build without copying files or changing PATH
+  --no-man           Skip the man page
+  --no-strip         Keep binary debug symbols
+  --no-path          Do not edit a shell profile
+  --verbose          Show successful command output as well as errors
+  -h, --help         Show help
 
 Environment:
-  PREFIX, VERBOSE=1, NO_COLOR=1, LOG_FILE=/path/to/log
+  PREFIX, TEDIT_REPO, TEDIT_REPO_URL, TEDIT_REF, CXX, MAKE, PKG_CONFIG,
+  LUA_CFLAGS, LUA_LIBS, VERBOSE=1, LOG_FILE, TMPDIR
 EOF
 }
 
-while [ $# -gt 0 ]; do
+# Help and argument errors must not require a checkout or build dependencies.
+LOG=/dev/null
+TARGET_PREFIX=${PREFIX:-}
+REPO_DIR=${TEDIT_REPO:-}
+SOURCE_URL=${TEDIT_REPO_URL:-https://github.com/RobertFlexx/tedit.git}
+SOURCE_REF=${TEDIT_REF:-main}
+INSTALL_DEPS=1
+DEPS_ONLY=0
+REQUIRE_GIT=0
+NO_BUILD=0
+NO_INSTALL=0
+INSTALL_MAN=1
+DO_STRIP=1
+UPDATE_PATH=1
+VERBOSE=${VERBOSE:-0}
+while [ "$#" -gt 0 ]; do
   case "$1" in
-    --prefix) shift; [ $# -gt 0 ] || die "--prefix needs a path"; CUSTOM_PREFIX="$1" ;;
-    --system) FORCE_PREFIX_MODE="system" ;;
-    --user) FORCE_PREFIX_MODE="user" ;;
+    --prefix|--repo|--ref)
+      option=$1
+      shift
+      [ "$#" -gt 0 ] && [ -n "$1" ] || die "$option needs a value"
+      case "$option" in
+        --prefix) TARGET_PREFIX=$1 ;;
+        --repo) REPO_DIR=$1 ;;
+        --ref) SOURCE_REF=$1 ;;
+      esac
+      ;;
+    --system) TARGET_PREFIX=/usr/local ;;
+    --user) TARGET_PREFIX=${HOME:?HOME is required for --user}/.local ;;
     --no-deps) INSTALL_DEPS=0 ;;
     --deps-only) DEPS_ONLY=1 ;;
+    --with-git) REQUIRE_GIT=1 ;;
+    --no-build) NO_BUILD=1 ;;
+    --no-install) NO_INSTALL=1 ;;
     --no-man) INSTALL_MAN=0 ;;
     --no-strip) DO_STRIP=0 ;;
     --no-path) UPDATE_PATH=0 ;;
     --verbose) VERBOSE=1 ;;
-    -h|--help) usage; exit 0 ;;
+    -h|--help) usage; return 0 ;;
     *) die "Unknown option: $1 (use --help)" ;;
   esac
   shift
 done
 
-# -----------------------------
-# Privileges
-# -----------------------------
-SUDO=""
-if [ "$(id -u)" -ne 0 ]; then
-  if have sudo; then SUDO="sudo"
-  elif have doas; then SUDO="doas"
-  else SUDO=""
+START_DIR=$(pwd -P)
+USER_ID=$(id -u)
+if [ -z "$TARGET_PREFIX" ]; then
+  if [ "$USER_ID" -eq 0 ]; then TARGET_PREFIX=/usr/local
+  else TARGET_PREFIX=${HOME:?HOME is required for a user install}/.local
   fi
 fi
+case "$TARGET_PREFIX" in /*) ;; *) TARGET_PREFIX=$START_DIR/$TARGET_PREFIX ;; esac
+WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/tedit-install.XXXXXX") || {
+  printf '%s\n' 'ERROR: cannot create a temporary build directory' >&2
+  exit 1
+}
+WORK_DIR=$(CDPATH= cd -P -- "$WORK_DIR" && pwd)
+DEST_TEMP=
+cleanup() {
+  if [ -n "$DEST_TEMP" ]; then root_command rm -f -- "$DEST_TEMP" || :; fi
+  rm -rf -- "$WORK_DIR"
+}
+trap cleanup 0
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+if [ -n "${LOG_FILE:-}" ]; then LOG=$LOG_FILE
+else LOG=$(mktemp "${TMPDIR:-/tmp}/tedit-install.log.XXXXXX") || exit 1
+fi
+case "$LOG" in /*) ;; *) LOG=$START_DIR/$LOG ;; esac
+: >>"$LOG" || { printf 'ERROR: cannot write log: %s\n' "$LOG" >&2; exit 1; }
+say ':: Installing tedit from source'
+say "Log: $LOG"
+say "Prefix: $TARGET_PREFIX"
 
-auth_once(){
-  [ -z "$SUDO" ] && return 0
-  info "Elevating privileges (may prompt once)..."
-  if [ "$SUDO" = "sudo" ]; then
-    sudo -v
+run() {
+  # Never let a child consume the script's stdin, including in non-TTY runs.
+  if "$@" </dev/null >"$WORK_DIR/output" 2>&1; then
+    cat "$WORK_DIR/output" >>"$LOG"
+    if [ "$VERBOSE" = 1 ]; then cat "$WORK_DIR/output"; fi
   else
-    $SUDO true
+    command_status=$?
+    cat "$WORK_DIR/output" >>"$LOG"
+    cat "$WORK_DIR/output" >&2
+    return "$command_status"
   fi
 }
 
-# -----------------------------
-# UI (simple, safe)
-# -----------------------------
-CURSOR_HIDE=""; CURSOR_SHOW=""
-if [ "$TTY" -eq 1 ] && have tput; then
-  CURSOR_HIDE="$(tput civis 2>/dev/null || true)"
-  CURSOR_SHOW="$(tput cnorm 2>/dev/null || true)"
-fi
-
-finish_ui(){ [ "$TTY" -eq 1 ] && printf "\r\033[K%s" "$CURSOR_SHOW"; return 0; }
-
-trap 'finish_ui' EXIT INT TERM
-[ "$TTY" -eq 1 ] && printf "%s" "$CURSOR_HIDE"
-
-run_logged(){
-  tmpout="$(mktemp_file)"
-  set +e
-  "$@" >"$tmpout" 2>&1
-  rc=$?
-  set -e
-
-  if [ "$VERBOSE" = "1" ]; then
-    cat "$tmpout"
+ELEVATE=
+AUTHENTICATED=0
+authenticate() {
+  [ "$USER_ID" -ne 0 ] || return 0
+  if [ "$AUTHENTICATED" -eq 0 ]; then
+    if have sudo; then
+      ELEVATE=sudo
+      say ':: Authenticating with sudo'
+      # sudo reads from the terminal; do not hide authentication errors/prompts.
+      sudo -v </dev/null || die 'sudo authentication failed'
+    elif have doas; then ELEVATE=doas
+    else die 'This step needs root. Install dependencies as root, or use a writable --prefix with --no-deps.'
+    fi
+    AUTHENTICATED=1
   fi
-  cat "$tmpout" >>"$LOG"
-  rm -f "$tmpout" 2>/dev/null || :
-  return "$rc"
+}
+root_command() {
+  case "$ELEVATE" in
+    sudo) sudo -n "$@" </dev/null ;;
+    doas) doas "$@" </dev/null ;;
+    *) "$@" </dev/null ;;
+  esac
+}
+as_root() {
+  authenticate
+  run root_command "$@"
 }
 
-spinner(){
-  msg="$1"; shift
-  if [ "$TTY" -ne 1 ] || [ "$VERBOSE" = "1" ]; then
-    info "$msg"
-    run_logged "$@" || return $?
-    return 0
+# Prefer the native package manager over unrelated tools on PATH. ID_LIKE lists
+# distro families in order of relevance; do not treat it as one literal ID.
+OS=$(uname -s)
+ID=
+ID_LIKE=
+PKG=
+if [ "$OS" = Linux ]; then
+  OS_RELEASE=${TEDIT_OS_RELEASE:-/etc/os-release}
+  if [ -r "$OS_RELEASE" ]; then
+    # shellcheck disable=SC1090
+    . "$OS_RELEASE"
+  elif [ -r /usr/lib/os-release ]; then
+    # shellcheck disable=SC1091
+    . /usr/lib/os-release
   fi
-
-  run_logged "$@" &
-  pid=$!
-  frames='-\|/'; i=0
-  while kill -0 "$pid" 2>/dev/null; do
-    i=$(( (i+1) % 4 ))
-    c=$(printf %s "$frames" | cut -c $((i+1)))
-    printf "\r\033[K%s%s[%s]%s %s" "$CYAN" "$BOLD" "$c" "$RESET" "$msg"
-    sleep 0.1
+  for family in "$ID" $ID_LIKE; do
+    case "$family" in
+      alpine|postmarketos|chimera) PKG=apk ;;
+      debian|ubuntu) PKG=apt-get ;;
+      fedora|rhel|centos|rocky|almalinux|amzn|ol)
+        if have dnf; then PKG=dnf; else PKG=yum; fi ;;
+      arch|manjaro|artix) PKG=pacman ;;
+      opensuse*|suse|sles) PKG=zypper ;;
+      void) PKG=xbps-install ;;
+      solus) PKG=eopkg ;;
+      gentoo) PKG=emerge ;;
+      nixos) PKG=nix ;;
+      guix) PKG=guix ;;
+    esac
+    [ -z "$PKG" ] || break
   done
-  wait "$pid"
-  rc=$?
-  printf "\r\033[K"
-  return "$rc"
-}
-
-run_root(){
-  msg="$1"; shift
-  if [ -z "$SUDO" ]; then
-    spinner "$msg" "$@"; return $?
-  fi
-
-  # If non-interactive auth is possible, keep spinner; otherwise run plainly (so prompts work)
-  if [ "$SUDO" = "sudo" ] && sudo -n true 2>/dev/null; then
-    spinner "$msg" sudo -n "$@"; return $?
-  fi
-  if [ "$SUDO" = "doas" ] && doas -n true 2>/dev/null; then
-    spinner "$msg" doas -n "$@"; return $?
-  fi
-
-  warn "[auth] $msg"
-  run_logged "$SUDO" "$@"
-}
-
-# -----------------------------
-# Package manager detection
-# -----------------------------
-ID=""; ID_LIKE=""
-if [ -r /etc/os-release ]; then
-  # shellcheck disable=SC1091
-  . /etc/os-release || true
+else
+  case "$OS" in
+    Darwin) if have brew; then PKG=brew; else PKG=port; fi ;;
+    FreeBSD|DragonFly) PKG=pkg ;;
+    OpenBSD) PKG=pkg_add ;;
+    NetBSD) PKG=pkgin ;;
+  esac
 fi
-ID="${ID-}"; ID_LIKE="${ID_LIKE-}"
+if [ -z "$PKG" ]; then
+  for candidate in apt-get dnf yum pacman zypper apk xbps-install eopkg emerge brew port; do
+    if have "$candidate"; then PKG=$candidate; break; fi
+  done
+fi
+say "Package manager: ${PKG:-not detected} (${ID:-$OS})"
 
-PKG=""
-case "${ID:-}" in
-  alpine|postmarketos|chimera) PKG="apk" ;;
-  arch|manjaro|endeavouros|arco|artix|cachyos) PKG="pacman" ;;
-  debian|ubuntu|pop|elementary|linuxmint|zorin) PKG="apt" ;;
-  fedora|rhel|centos|rocky|almalinux) PKG="dnf" ;;
-  opensuse*|sles) PKG="zypper" ;;
-  gentoo) PKG="emerge" ;;
-  void) PKG="xbps-install" ;;
-  solus) PKG="eopkg" ;;
-  freebsd|dragonfly|midnightbsd|ghostbsd) PKG="pkg" ;;
-  openbsd) PKG="pkg_add" ;;
-  netbsd) PKG="pkgin" ;;
-esac
-
-# fallback by availability
-[ -z "$PKG" ] && have apk && PKG="apk" || :
-[ -z "$PKG" ] && have apt-get && PKG="apt" || :
-[ -z "$PKG" ] && have apt && PKG="apt" || :
-[ -z "$PKG" ] && have dnf && PKG="dnf" || :
-[ -z "$PKG" ] && have yum && PKG="yum" || :
-[ -z "$PKG" ] && have pacman && PKG="pacman" || :
-[ -z "$PKG" ] && have zypper && PKG="zypper" || :
-[ -z "$PKG" ] && have xbps-install && PKG="xbps-install" || :
-[ -z "$PKG" ] && have eopkg && PKG="eopkg" || :
-[ -z "$PKG" ] && have emerge && PKG="emerge" || :
-[ -z "$PKG" ] && have pkg && PKG="pkg" || :
-[ -z "$PKG" ] && have pkg_add && PKG="pkg_add" || :
-[ -z "$PKG" ] && have pkgin && PKG="pkgin" || :
-[ -z "$PKG" ] && have brew && PKG="brew" || :
-[ -z "$PKG" ] && have port && PKG="port" || :
-[ -z "$PKG" ] && have nix-shell && PKG="nix" || :
-[ -z "$PKG" ] && have guix && PKG="guix" || :
-
-# -----------------------------
-# Tool selection
-# -----------------------------
-choose_cxx(){
-  if have c++; then printf %s "c++"
-  elif have g++; then printf %s "g++"
-  elif have clang++; then printf %s "clang++"
-  else printf %s ""
+source_exists() { [ -f "$1/Makefile" ] && [ -f "$1/src/tedit.cpp" ]; }
+NEED_SOURCE=0
+if [ "$DEPS_ONLY" -eq 0 ]; then
+  if [ -n "$REPO_DIR" ]; then
+    source_exists "$REPO_DIR" || die "Not a tedit source directory: $REPO_DIR"
+  else
+    # A local script builds its own checkout even when called from elsewhere.
+    if [ -f "$0" ]; then
+      SCRIPT_DIR=$(CDPATH= cd -P -- "$(dirname -- "$0")" && pwd)
+      if source_exists "$SCRIPT_DIR/.."; then REPO_DIR=$SCRIPT_DIR/..; fi
+    fi
+    if [ -z "$REPO_DIR" ] && source_exists "$START_DIR"; then REPO_DIR=$START_DIR; fi
+    if [ -z "$REPO_DIR" ]; then NEED_SOURCE=1; fi
   fi
-}
+fi
 
-choose_make(){
-  # Prefer gmake if present (BSD/macOS/GNU make installs)
-  if have gmake; then printf %s "gmake"; return 0; fi
-  printf %s "make"
-}
+if [ "$NO_BUILD" -eq 1 ] && [ "$NEED_SOURCE" -eq 1 ]; then
+  die '--no-build requires an existing local source checkout and binary.'
+fi
 
-choose_pc(){
-  if have pkg-config; then printf %s "pkg-config"; return 0; fi
-  if have pkgconf; then printf %s "pkgconf"; return 0; fi
-  printf %s ""
+cat >"$WORK_DIR/cxx.cpp" <<'EOF'
+#include <filesystem>
+#include <optional>
+int main() {
+  std::optional<std::filesystem::path> p = std::filesystem::current_path();
+  return p->empty();
 }
-
-# -----------------------------
-# Dependency checks (real checks)
-# -----------------------------
-cxx_test(){
-  cxx="$1"
-  tmp="$(mktemp_file)"
-  cat >"$tmp.cpp" <<'EOF'
-#include <iostream>
-int main(){ std::cout << "ok\n"; return 0; }
 EOF
-  set +e
-  "$cxx" -std=c++17 -o "$tmp.out" "$tmp.cpp" >/dev/null 2>&1
-  rc=$?
-  set -e
-  rm -f "$tmp.cpp" "$tmp.out" 2>/dev/null || :
-  return "$rc"
-}
-
-# Globals filled in by Lua detection
-LUA_CFLAGS=""
-LUA_LIBS=""
-LUA_PCNAME=""
-
-lua_pc_pick(){
-  pcbin="$1"
-  [ -n "$pcbin" ] || return 1
-  for n in lua5.4 lua-5.4 lua54 lua5.3 lua-5.3 lua53 lua; do
-    "$pcbin" --exists "$n" >/dev/null 2>&1 && { printf %s "$n"; return 0; }
-  done
-  return 1
-}
-
-lua_try_compile(){
-  cxx="$1"; cflags="$2"; libs="$3"
-  tmp="$(mktemp_file)"
-  cat >"$tmp.c" <<'EOF'
+cat >"$WORK_DIR/lua.cpp" <<'EOF'
 extern "C" {
 #include <lua.h>
 #include <lauxlib.h>
 #include <lualib.h>
 }
-int main(void){ lua_State* L = luaL_newstate(); lua_close(L); return 0; }
+int main() {
+  lua_State *L = luaL_newstate();
+  luaL_openlibs(L);
+  int rc = luaL_loadstring(L, "return 1");
+  lua_close(L);
+  return rc == LUA_OK ? 0 : 1;
+}
 EOF
-  set +e
-  # shellcheck disable=SC2086
-  "$cxx" -std=c++17 $cflags -o "$tmp.out" "$tmp.c" $libs >/dev/null 2>&1
-  rc=$?
-  set -e
-  rm -f "$tmp.c" "$tmp.out" 2>/dev/null || :
-  return "$rc"
+
+REQUESTED_CXX=${CXX:-}
+REQUESTED_MAKE=${MAKE:-}
+REQUESTED_PC=${PKG_CONFIG:-}
+REQUESTED_LUA_CFLAGS=${LUA_CFLAGS:-}
+REQUESTED_LUA_LIBS=${LUA_LIBS:-}
+CXX_BIN=
+MAKE_BIN=
+PC_BIN=
+FS_LIBS=
+LUA_CFLAGS=
+LUA_LIBS=
+
+probe_cxx() {
+  for FS_LIBS in '' -lstdc++fs; do
+    # Intentional splitting of conventional compiler/linker flag lists.
+    # shellcheck disable=SC2086
+    if "$1" ${CPPFLAGS:-} ${CXXFLAGS:-} -std=c++17 "$WORK_DIR/cxx.cpp" \
+      ${LDFLAGS:-} $FS_LIBS -o "$WORK_DIR/cxx" >>"$LOG" 2>&1 </dev/null; then return 0; fi
+  done
+  return 1
 }
 
-detect_lua_flags(){
-  cxx="$1"
-  pcbin="$2"
+probe_lua() {
+  # shellcheck disable=SC2086
+  "$CXX_BIN" ${CPPFLAGS:-} ${CXXFLAGS:-} -std=c++17 $1 "$WORK_DIR/lua.cpp" \
+    ${LDFLAGS:-} -o "$WORK_DIR/lua" $2 >>"$LOG" 2>&1 </dev/null
+}
 
-  LUA_CFLAGS=""; LUA_LIBS=""; LUA_PCNAME=""
-
-  # 1) Prefer pkg-config if available
-  if [ -n "$pcbin" ]; then
-    pcname="$(lua_pc_pick "$pcbin" 2>/dev/null || true)"
-    if [ -n "$pcname" ]; then
-      cflags="$("$pcbin" --cflags "$pcname" 2>/dev/null || true)"
-      libs="$("$pcbin" --libs "$pcname" 2>/dev/null || true)"
-      if lua_try_compile "$cxx" "$cflags" "$libs"; then
-        LUA_PCNAME="$pcname"
-        LUA_CFLAGS="$cflags"
-        LUA_LIBS="$libs"
-        return 0
-      fi
-    fi
+detect_lua() {
+  LUA_CFLAGS=$REQUESTED_LUA_CFLAGS
+  LUA_LIBS=$REQUESTED_LUA_LIBS
+  if [ -n "$LUA_CFLAGS$LUA_LIBS" ]; then probe_lua "$LUA_CFLAGS" "$LUA_LIBS"; return; fi
+  if [ -n "$PC_BIN" ]; then
+    for module in lua5.5 lua-5.5 lua55 lua5.4 lua-5.4 lua54 \
+      lua5.3 lua-5.3 lua53 lua5.2 lua-5.2 lua52 lua luajit; do
+      "$PC_BIN" --exists "$module" 2>/dev/null || continue
+      LUA_CFLAGS=$("$PC_BIN" --cflags "$module") || continue
+      LUA_LIBS=$("$PC_BIN" --libs "$module") || continue
+      if probe_lua "$LUA_CFLAGS" "$LUA_LIBS"; then return 0; fi
+    done
   fi
-
-  # 2) Fallback: common include/lib combos (for systems without pkg-config .pc files)
-  for inc in /usr/include/lua5.4 /usr/local/include/lua5.4 \
-             /usr/include/lua54 /usr/local/include/lua54 \
-             /usr/include/lua /usr/local/include/lua; do
-    [ -d "$inc" ] || continue
-    for lib in lua5.4 lua54 lua; do
-      # try with and without -ldl (macOS doesn’t have libdl)
-      if lua_try_compile "$cxx" "-I$inc" "-l$lib -lm"; then
-        LUA_CFLAGS="-I$inc"
-        LUA_LIBS="-l$lib -lm"
-        return 0
-      fi
-      if lua_try_compile "$cxx" "-I$inc" "-l$lib -lm -ldl"; then
-        LUA_CFLAGS="-I$inc"
-        LUA_LIBS="-l$lib -lm -ldl"
-        return 0
-      fi
+  # Solus uses /usr/include/lua.h. BSD/macOS may use versioned directories or
+  # prefixes outside the compiler's default header/library search paths.
+  for lua_prefix in /usr /usr/local /opt/local /opt/homebrew /home/linuxbrew/.linuxbrew; do
+    for lua_suffix in '' /lua5.5 /lua-5.5 /lua55 /lua5.4 /lua-5.4 /lua54 \
+      /lua5.3 /lua-5.3 /lua53 /lua5.2 /lua-5.2 /lua52 /luajit-2.1 /luajit-2.0; do
+      lua_include=$lua_prefix/include$lua_suffix
+      [ -f "$lua_include/lua.h" ] || continue
+      LUA_CFLAGS=-I$lua_include
+      for lua_library in lua5.5 lua55 lua5.4 lua54 lua5.3 lua53 lua5.2 lua52 lua luajit-5.1; do
+        for lua_extra in '' '-lm -ldl'; do
+          LUA_LIBS="-L$lua_prefix/lib -l$lua_library $lua_extra"
+          if probe_lua "$LUA_CFLAGS" "$LUA_LIBS"; then return 0; fi
+        done
+      done
     done
   done
-
+  LUA_CFLAGS=
+  LUA_LIBS=
   return 1
 }
 
-deps_missing(){
-  MAKE_BIN="$1"
-  CXX_BIN="$2"
-  PC_BIN="$3"
-
-  have "$MAKE_BIN" || return 0
-  [ -n "$CXX_BIN" ] || return 0
-  cxx_test "$CXX_BIN" || return 0
-
-  detect_lua_flags "$CXX_BIN" "$PC_BIN" || return 0
-  return 1
+check_build_deps() {
+  MAKE_BIN=
+  CXX_BIN=
+  PC_BIN=
+  if [ -n "$REQUESTED_MAKE" ]; then set -- "$REQUESTED_MAKE"; else set -- gmake make; fi
+  for candidate do
+    if have "$candidate" && "$candidate" --version 2>/dev/null | grep -q 'GNU Make'; then
+      MAKE_BIN=$candidate
+      break
+    fi
+  done
+  if [ -n "$REQUESTED_CXX" ]; then set -- "$REQUESTED_CXX"; else set -- c++ g++ clang++; fi
+  for candidate do
+    if have "$candidate" && probe_cxx "$candidate"; then CXX_BIN=$candidate; break; fi
+  done
+  if [ -n "$REQUESTED_PC" ]; then set -- "$REQUESTED_PC"; else set -- pkg-config pkgconf; fi
+  for candidate do
+    if have "$candidate"; then PC_BIN=$candidate; break; fi
+  done
+  [ -n "$MAKE_BIN" ] && [ -n "$CXX_BIN" ] && detect_lua
 }
 
-# -----------------------------
-# Install dependencies
-# -----------------------------
-install_deps(){
-  info "Installing dependencies via: $PKG"
+install_deps() {
+  say ":: Installing dependencies with ${PKG:-unknown}"
   case "$PKG" in
-    apk)
-      run_root "apk: build tools" apk add --no-cache --update-cache build-base || true
-      run_root "apk: pkgconf"     apk add --no-cache --update-cache pkgconf || true
-      run_root "apk: lua dev"     apk add --no-cache --update-cache lua5.4-dev lua5.4 || \
-                                  apk add --no-cache --update-cache lua-dev lua || \
-                                  apk add --no-cache --update-cache lua5.3-dev lua5.3 || true
+    nix) die 'Enter nix-shell -p gnumake gcc pkg-config lua git, then rerun with --no-deps.' ;;
+    guix) die 'Enter guix shell make gcc-toolchain pkg-config lua git, then rerun with --no-deps.' ;;
+    '') die 'Install GNU make, a C++17 compiler, Lua development headers/libraries, and git; then rerun with --no-deps.' ;;
+  esac
+  have "$PKG" || die "Detected $PKG, but it is not installed. Install build dependencies manually and use --no-deps."
+  set --
+  case "$PKG" in
+    apt-get)
+      as_root apt-get update || return $?
+      if [ "$NEED_BUILD" -eq 1 ]; then
+        lua_dev=liblua5.4-dev
+        if have apt-cache; then
+          lua_dev=
+          for candidate in liblua5.4-dev liblua5.3-dev liblua5.2-dev; do
+            if apt-cache show "$candidate" >/dev/null 2>&1; then lua_dev=$candidate; break; fi
+          done
+          [ -n "$lua_dev" ] || die 'No supported Lua development package is available in the configured apt repositories.'
+        fi
+        set -- build-essential pkg-config "$lua_dev"
+      fi
+      if [ "$NEED_GIT" -eq 1 ]; then set -- "$@" git ca-certificates; fi
+      as_root apt-get install -y --no-install-recommends "$@"
       ;;
-    apt)
-      run_root "apt: update index" sh -c "apt-get update -y || apt update -y" || true
-      run_root "apt: build tools"  sh -c "apt-get install -y build-essential || apt install -y build-essential" || true
-      run_root "apt: pkg-config"   sh -c "apt-get install -y pkg-config || apt install -y pkg-config" || true
-      run_root "apt: lua dev"      sh -c "apt-get install -y liblua5.4-dev lua5.4 || apt-get install -y liblua5.3-dev lua5.3 || apt-get install -y liblua5.2-dev lua5.2 || true" || true
-      ;;
-    dnf)
-      run_root "dnf: build tools" dnf -y install make gcc gcc-c++ || true
-      run_root "dnf: pkg-config"  dnf -y install pkgconf-pkg-config pkgconfig pkgconf || true
-      run_root "dnf: lua dev"     dnf -y install lua lua-devel || true
-      ;;
-    yum)
-      run_root "yum: build tools" yum -y install make gcc gcc-c++ || true
-      run_root "yum: pkg-config"  yum -y install pkgconf-pkg-config pkgconfig pkgconf || true
-      run_root "yum: lua dev"     yum -y install lua lua-devel || true
+    dnf|yum)
+      if [ "$NEED_BUILD" -eq 1 ]; then set -- make gcc-c++ pkgconf-pkg-config lua-devel; fi
+      if [ "$NEED_GIT" -eq 1 ]; then set -- "$@" git ca-certificates; fi
+      as_root "$PKG" install -y "$@"
       ;;
     pacman)
-      run_root "pacman: sync" pacman -Sy --noconfirm || true
-      run_root "pacman: deps" pacman -S --needed --noconfirm base-devel pkgconf lua || true
+      if [ "$NEED_BUILD" -eq 1 ]; then set -- base-devel pkgconf lua; fi
+      if [ "$NEED_GIT" -eq 1 ]; then set -- "$@" git ca-certificates; fi
+      # Refreshing with -Sy alone can cause partial upgrades on Arch.
+      as_root pacman -S --needed --noconfirm "$@"
       ;;
     zypper)
-      run_root "zypper: refresh" zypper -n refresh || true
-      run_root "zypper: build tools" zypper -n install make gcc-c++ || true
-      run_root "zypper: pkg-config"  zypper -n install pkgconf pkg-config || true
-      run_root "zypper: lua dev"     zypper -n install lua54-devel lua-devel lua || true
+      if [ "$NEED_BUILD" -eq 1 ]; then set -- make gcc-c++ pkgconf-pkg-config lua54-devel; fi
+      if [ "$NEED_GIT" -eq 1 ]; then set -- "$@" git ca-certificates; fi
+      as_root zypper --non-interactive install "$@"
+      ;;
+    apk)
+      if [ "$NEED_BUILD" -eq 1 ]; then
+        if [ "$ID" = chimera ]; then set -- base-devel gmake pkgconf lua5.4-devel
+        else set -- build-base pkgconf lua5.4-dev
+        fi
+      fi
+      if [ "$NEED_GIT" -eq 1 ]; then set -- "$@" git ca-certificates; fi
+      as_root apk add --no-cache "$@"
       ;;
     xbps-install)
-      run_root "xbps: sync" xbps-install -Sy || true
-      run_root "xbps: build tools" xbps-install -y base-devel || xbps-install -y gcc make binutils || true
-      run_root "xbps: pkg-config"  xbps-install -y pkg-config || xbps-install -y pkgconf || true
-      run_root "xbps: lua dev"     xbps-install -y lua54 lua54-devel || xbps-install -y lua lua-devel || true
+      if [ "$NEED_BUILD" -eq 1 ]; then set -- base-devel pkgconf lua54-devel; fi
+      if [ "$NEED_GIT" -eq 1 ]; then set -- "$@" git ca-certificates; fi
+      as_root xbps-install -Sy "$@"
       ;;
     eopkg)
-      run_root "eopkg: system.devel" eopkg -y it -c system.devel || eopkg -y it make gcc binutils || true
-      run_root "eopkg: pkg-config"   eopkg -y it pkg-config || true
-      run_root "eopkg: lua dev"      eopkg -y it lua-devel || eopkg -y it lua || true
+      if [ "$NEED_BUILD" -eq 1 ]; then
+        as_root eopkg install -y -c system.devel || return $?
+        set -- pkgconf lua-devel
+      fi
+      if [ "$NEED_GIT" -eq 1 ]; then set -- "$@" git ca-certs; fi
+      as_root eopkg install -y "$@"
       ;;
     emerge)
-      warn "Gentoo: this may be interactive depending on your setup."
-      # Correct Gentoo atoms:
-      # - make         => dev-build/make  (your log failed because it tried sys-devel/make)
-      # - pkg-config   => dev-util/pkgconf (pkg-config compatible) / virtual/pkgconfig
-      # - lua          => dev-lang/lua
-      run_root "emerge: base tools" emerge --quiet-build=y --oneshot dev-build/make dev-util/pkgconf virtual/pkgconfig || true
-      run_root "emerge: lua"        emerge --quiet-build=y --oneshot dev-lang/lua || true
+      say ':: Gentoo: emerging build dependencies may take a while.'
+      if [ "$NEED_BUILD" -eq 1 ]; then set -- dev-build/make sys-devel/gcc dev-util/pkgconf dev-lang/lua:5.4; fi
+      if [ "$NEED_GIT" -eq 1 ]; then set -- "$@" dev-vcs/git app-misc/ca-certificates; fi
+      as_root emerge --oneshot --noreplace --quiet-build=y "$@"
       ;;
     pkg)
-      run_root "pkg: update" pkg update -f || true
-      run_root "pkg: deps"   pkg install -y gmake pkgconf lua54 || pkg install -y gmake pkgconf lua53 || pkg install -y gmake pkgconf lua || true
+      if [ "$NEED_BUILD" -eq 1 ]; then set -- gmake pkgconf lua54; fi
+      if [ "$NEED_GIT" -eq 1 ]; then set -- "$@" git ca_root_nss; fi
+      as_root pkg install -y "$@"
       ;;
     pkg_add)
-      warn "OpenBSD: you may need PKG_PATH set (see pkg_add(1))."
-      run_root "pkg_add: deps" pkg_add gmake pkgconf lua%5.4 || pkg_add gmake pkgconf lua || true
+      if [ "$NEED_BUILD" -eq 1 ]; then set -- gmake pkgconf 'lua%5.4'; fi
+      if [ "$NEED_GIT" -eq 1 ]; then set -- "$@" git; fi
+      as_root pkg_add "$@"
       ;;
     pkgin)
-      run_root "pkgin: update" pkgin -y update || true
-      run_root "pkgin: deps"   pkgin -y install gmake pkgconf lua54 || pkgin -y install gmake pkgconf lua || true
+      if [ "$NEED_BUILD" -eq 1 ]; then set -- gmake pkgconf lua54; fi
+      if [ "$NEED_GIT" -eq 1 ]; then set -- "$@" git mozilla-rootcerts; fi
+      as_root pkgin -y update || return $?
+      as_root pkgin -y install "$@"
       ;;
     brew)
-      spinner "brew: deps" brew install make pkg-config lua || true
+      [ "$USER_ID" -ne 0 ] || die 'Homebrew must run as your regular user. Rerun without sudo.'
+      if [ "$OS" = Darwin ] && ! xcode-select -p >/dev/null 2>&1; then
+        die 'Install Xcode Command Line Tools with xcode-select --install, then rerun.'
+      fi
+      if [ "$NEED_BUILD" -eq 1 ]; then set -- make pkgconf lua; fi
+      if [ "$NEED_GIT" -eq 1 ]; then set -- "$@" git ca-certificates; fi
+      run brew install "$@"
       ;;
     port)
-      run_root "macports: selfupdate" port selfupdate || true
-      run_root "macports: deps"       port install gmake pkgconfig lua || true
-      ;;
-    nix)
-      warn "Nix: using a temporary build environment (no system changes)."
-      ;;
-    guix)
-      warn "Guix: using a temporary build environment (no system changes)."
-      ;;
-    *)
-      die "Unsupported/undetected package manager. Install: make, a C++17 compiler, and Lua dev headers/libs."
+      if [ "$NEED_BUILD" -eq 1 ]; then set -- gmake pkgconfig lua54; fi
+      if [ "$NEED_GIT" -eq 1 ]; then set -- "$@" git curl-ca-bundle; fi
+      as_root port install "$@"
       ;;
   esac
 }
 
-# -----------------------------
-# Prefix selection
-# -----------------------------
-TARGET_PREFIX=""
-if [ -n "$CUSTOM_PREFIX" ]; then
-  TARGET_PREFIX="$CUSTOM_PREFIX"
-else
-  case "$FORCE_PREFIX_MODE" in
-    system) TARGET_PREFIX="$DEFAULT_PREFIX" ;;
-    user)   TARGET_PREFIX="$USER_PREFIX" ;;
-    auto)
-      if [ "$(id -u)" -eq 0 ]; then TARGET_PREFIX="$DEFAULT_PREFIX"
-      else TARGET_PREFIX="$USER_PREFIX"
-      fi
-      ;;
-    *) TARGET_PREFIX="$USER_PREFIX" ;;
-  esac
+NEED_BUILD=0
+NEED_GIT=0
+if [ "$NO_BUILD" -eq 0 ] || [ "$DEPS_ONLY" -eq 1 ]; then
+  check_build_deps || NEED_BUILD=1
 fi
-
-if [ "$FORCE_PREFIX_MODE" = "system" ] && [ "$(id -u)" -ne 0 ] && [ -z "$SUDO" ]; then
-  die "System install requested but no sudo/doas found. Re-run as root, or use --user / --prefix."
+if { [ "$NEED_SOURCE" -eq 1 ] || [ "$REQUIRE_GIT" -eq 1 ]; } && ! have git; then NEED_GIT=1; fi
+if [ "$NEED_BUILD" -eq 1 ] || [ "$NEED_GIT" -eq 1 ]; then
+  [ "$INSTALL_DEPS" -eq 1 ] || die 'Missing build dependencies or git with --no-deps set. Need GNU make, a C++17 compiler with filesystem support, and Lua development headers/libraries. See the log for compiler errors.'
+  install_deps || die 'Dependency installation failed. Fix the package-manager error above and rerun.'
+  hash -r 2>/dev/null || :
+  check_build_deps || die 'Build dependencies are still unusable. Need GNU make, C++17 filesystem support, and Lua development headers/libraries. See the log; CXX and LUA_CFLAGS/LUA_LIBS can override detection.'
+  if [ "$NEED_GIT" -eq 1 ]; then have git || die 'git is still unavailable after installing dependencies'; fi
 fi
+if [ "$DEPS_ONLY" -eq 1 ]; then say 'Dependencies verified.'; return 0; fi
 
-# -----------------------------
-# Start
-# -----------------------------
-info "Installing $APP_NAME"
-say "Log: $LOG"
-
-[ -f "src/tedit.cpp" ] || die "Run this from the $APP_NAME source directory (missing: src/tedit.cpp)."
-
-MAKE_BIN="$(choose_make)"
-CXX_BIN="$(choose_cxx)"
-PC_BIN="$(choose_pc)"
-
-info "Detected:"
-say "  make: ${MAKE_BIN}"
-say "  c++ : ${CXX_BIN:-none}"
-say "  pkg : ${PKG:-none}"
-say "  pc  : ${PC_BIN:-none}"
-say "  prefix: ${TARGET_PREFIX}"
-
-PREFIX_PARENT=$(dirname "$TARGET_PREFIX")
-if [ "$(id -u)" -ne 0 ] && [ "$TARGET_PREFIX" != "$USER_PREFIX" ] && [ ! -w "$TARGET_PREFIX" ] && [ ! -w "$PREFIX_PARENT" ]; then
-  auth_once
+if [ "$NEED_SOURCE" -eq 1 ]; then
+  REPO_DIR=$WORK_DIR/source
+  say ":: Cloning $SOURCE_URL ($SOURCE_REF)"
+  export GIT_TERMINAL_PROMPT=0
+  run git clone --depth 1 --branch "$SOURCE_REF" -- "$SOURCE_URL" "$REPO_DIR" || die 'Could not fetch tedit source.'
 fi
-
-# Nix/Guix: ephemeral env build
-if [ "$PKG" = "nix" ]; then
-  [ "$INSTALL_DEPS" -eq 1 ] || die "Nix detected but --no-deps set. Use nix-shell manually."
-  info "Building in nix-shell..."
-  TARGET_PREFIX_Q="$(shell_quote "$TARGET_PREFIX")"
-  spinner "nix-shell: build + install" nix-shell -p gnumake gcc pkg-config lua --run \
-    "make && make PREFIX=$TARGET_PREFIX_Q install"
-  ok "$APP_NAME installed to: $TARGET_PREFIX/bin/$APP_NAME"
-  exit 0
+source_exists "$REPO_DIR" || die "Not a tedit source directory: $REPO_DIR"
+REPO_DIR=$(CDPATH= cd -P -- "$REPO_DIR" && pwd)
+cd "$REPO_DIR"
+# Force a source rebuild even if local objects use a different compiler/Lua ABI.
+if [ "$NO_BUILD" -eq 0 ]; then
+  say ":: Building with $MAKE_BIN and $CXX_BIN"
+  run "$MAKE_BIN" -B CXX="$CXX_BIN" LUA_CFLAGS="$LUA_CFLAGS" LUA_LIBS="$LUA_LIBS" \
+    LDFLAGS="${LDFLAGS:-} $FS_LIBS" all || die 'Build failed.'
 fi
-
-if [ "$PKG" = "guix" ]; then
-  [ "$INSTALL_DEPS" -eq 1 ] || die "Guix detected but --no-deps set. Use guix shell manually."
-  info "Building in guix shell..."
-  TARGET_PREFIX_Q="$(shell_quote "$TARGET_PREFIX")"
-  spinner "guix: build + install" guix shell gnu-make gcc-toolchain pkg-config lua -- \
-    sh -c "make && make PREFIX=$TARGET_PREFIX_Q install"
-  ok "$APP_NAME installed to: $TARGET_PREFIX/bin/$APP_NAME"
-  exit 0
-fi
-
-# Deps
-if deps_missing "$MAKE_BIN" "$CXX_BIN" "$PC_BIN"; then
-  if [ "$INSTALL_DEPS" -eq 1 ]; then
-    install_deps
-  else
-    die "Missing deps and --no-deps set. Install: make, C++17 compiler, and Lua dev headers/libs."
-  fi
-fi
-
-if [ "$DEPS_ONLY" -eq 1 ]; then
-  ok "Dependencies installed."
-  exit 0
-fi
-
-# Re-check after deps install
-MAKE_BIN="$(choose_make)"
-CXX_BIN="$(choose_cxx)"
-PC_BIN="$(choose_pc)"
-deps_missing "$MAKE_BIN" "$CXX_BIN" "$PC_BIN" && die "Deps still missing after install. Check the log."
-
-if [ -n "$LUA_PCNAME" ]; then
-  ok "Lua dev found via pkg-config: $LUA_PCNAME"
-else
-  ok "Lua dev found (fallback detection)"
-fi
-
-# Build (pass detected Lua flags into make vars; your Makefile supports overriding LUA_CFLAGS/LUA_LIBS)
-info "Building..."
-spinner "make" "$MAKE_BIN" CXX="$CXX_BIN" LUA_CFLAGS="$LUA_CFLAGS" LUA_LIBS="$LUA_LIBS" || die "Build failed."
-
-# Install
-info "Installing..."
-if [ "$(id -u)" -eq 0 ] || [ "$TARGET_PREFIX" = "$USER_PREFIX" ] || [ -z "$SUDO" ]; then
-  spinner "make install" "$MAKE_BIN" PREFIX="$TARGET_PREFIX" install || die "Install failed."
-else
-  run_root "make install" "$MAKE_BIN" PREFIX="$TARGET_PREFIX" install || die "Install failed."
-fi
-
-# Strip
+[ -x "$REPO_DIR/tedit" ] || die 'Build did not produce an executable tedit binary.'
+if [ "$NO_INSTALL" -eq 1 ]; then say "Build ready: $REPO_DIR/tedit"; return 0; fi
 if [ "$DO_STRIP" -eq 1 ] && have strip; then
-  BIN="${TARGET_PREFIX}/bin/${APP_NAME}"
-  if [ -e "$BIN" ]; then
-    if [ "$(id -u)" -eq 0 ] || [ "$TARGET_PREFIX" = "$USER_PREFIX" ] || [ -z "$SUDO" ]; then
-      spinner "strip" strip "$BIN" || true
-    else
-      run_root "strip" strip "$BIN" || true
-    fi
-  fi
+  run strip "$REPO_DIR/tedit" || say 'Warning: could not strip the binary; installing with debug symbols.'
 fi
 
-# Man page
+# Elevate file copies only when the target's nearest existing parent is not
+# writable. A custom user prefix must not trigger sudo just because it is custom.
+prefix_probe=$TARGET_PREFIX
+while [ ! -e "$prefix_probe" ]; do prefix_probe=$(dirname -- "$prefix_probe"); done
+INSTALL_AS_ROOT=0
+if [ "$USER_ID" -ne 0 ] && [ ! -w "$prefix_probe" ]; then INSTALL_AS_ROOT=1; fi
+install_file() {
+  if [ "$INSTALL_AS_ROOT" -eq 1 ]; then as_root "$@"
+  else run "$@"
+  fi
+}
+place_file() {
+  place_source=$1
+  place_destination=$2
+  place_mode=$3
+  [ ! -d "$place_destination" ] || die "Refusing to replace a directory: $place_destination"
+  place_dir=$(dirname -- "$place_destination")
+  install_file mkdir -p "$place_dir" || return $?
+  if [ "$INSTALL_AS_ROOT" -eq 1 ]; then
+    authenticate
+    DEST_TEMP=$(root_command mktemp "$place_dir/.tedit.XXXXXX") || return $?
+  else DEST_TEMP=$(mktemp "$place_dir/.tedit.XXXXXX") || return $?
+  fi
+  install_file install -m "$place_mode" "$place_source" "$DEST_TEMP" || return $?
+  install_file mv -f -- "$DEST_TEMP" "$place_destination" || return $?
+  DEST_TEMP=
+}
+say ":: Installing into $TARGET_PREFIX"
+place_file "$REPO_DIR/tedit" "$TARGET_PREFIX/bin/tedit" 0755 || die 'Could not install the binary.'
 if [ "$INSTALL_MAN" -eq 1 ]; then
-  MAN_SRC="./mandoc/${APP_NAME}.1"
-  if [ -f "$MAN_SRC" ]; then
-    MAN_DIR="${TARGET_PREFIX}/share/man/man1"
-    if [ "$(id -u)" -eq 0 ] || [ -z "$SUDO" ] || [ "$TARGET_PREFIX" = "$USER_PREFIX" ]; then
-      spinner "man directory" mkdir -p "$MAN_DIR" || true
-      spinner "man page" install -m 0644 "$MAN_SRC" "$MAN_DIR/${APP_NAME}.1" || true
-      have gzip && spinner "gzip man" gzip -f -9 "$MAN_DIR/${APP_NAME}.1" || true
-    else
-      run_root "man directory" mkdir -p "$MAN_DIR" || true
-      run_root "man page" install -m 0644 "$MAN_SRC" "$MAN_DIR/${APP_NAME}.1" || true
-      have gzip && run_root "gzip man" gzip -f -9 "$MAN_DIR/${APP_NAME}.1" || true
-    fi
-  else
-    warn "No man page found, skipping."
+  if [ -f "$REPO_DIR/mandoc/tedit.1" ]; then
+    place_file "$REPO_DIR/mandoc/tedit.1" "$TARGET_PREFIX/share/man/man1/tedit.1" 0644 || die 'Could not install the manual.'
+    # Older installers compressed this page; remove that stale duplicate.
+    install_file rm -f "$TARGET_PREFIX/share/man/man1/tedit.1.gz" || die 'Could not remove the old compressed manual.'
+  else say 'Warning: no man page found in the source checkout.'
   fi
 fi
 
-# PATH update (only if user prefix bin isn't already in PATH)
-if [ "$UPDATE_PATH" -eq 1 ]; then
-  BIN_DIR="${TARGET_PREFIX}/bin"
-  if ! printf "%s" ":$PATH:" | grep -q ":$BIN_DIR:"; then
-    PROFILE=""
-    [ -n "${ZDOTDIR-}" ] && [ -w "${ZDOTDIR}/.zprofile" 2>/dev/null ] && PROFILE="${ZDOTDIR}/.zprofile"
-    [ -z "$PROFILE" ] && [ -w "$HOME/.zprofile" 2>/dev/null ] && PROFILE="$HOME/.zprofile"
-    [ -z "$PROFILE" ] && [ -w "$HOME/.bash_profile" 2>/dev/null ] && PROFILE="$HOME/.bash_profile"
-    [ -z "$PROFILE" ] && PROFILE="$HOME/.profile"
-
-    mkdir -p "$(dirname "$PROFILE")" 2>/dev/null || :
-    if ! grep -F "$BIN_DIR" "$PROFILE" >/dev/null 2>&1; then
-      {
-        printf "\n# Added by %s installer\n" "$APP_NAME"
-        printf "export PATH=\"%s:\$PATH\"\n" "$BIN_DIR"
-      } >>"$PROFILE"
-      ok "Added $BIN_DIR to PATH in $PROFILE"
-      say "Restart shell or run: export PATH=\"$BIN_DIR:\$PATH\""
-    fi
+# Only a successful build of a clean Git revision can satisfy the updater's
+# up-to-date check. A failed build/install must leave the old receipt intact.
+build_revision=unverified
+if [ "$NO_BUILD" -eq 0 ] && have git && { [ -d .git ] || [ -f .git ]; }; then
+  if revision=$(git rev-parse HEAD 2>/dev/null) && changes=$(git status --porcelain 2>/dev/null) && [ -z "$changes" ]; then
+    build_revision=$revision
   fi
 fi
+printf '%s\n' "$build_revision" >"$WORK_DIR/revision"
+place_file "$WORK_DIR/revision" "$TARGET_PREFIX/share/tedit/build-revision" 0644 || die 'Could not record the installed revision.'
 
-ok "$APP_NAME installed successfully."
-say "Binary: ${TARGET_PREFIX}/bin/${APP_NAME}"
-say "Log: $LOG"
+BIN_DIR=$TARGET_PREFIX/bin
+case ":$PATH:" in
+  *":$BIN_DIR:"*) ;;
+  *)
+    PATH_LINE="export PATH=$(shell_quote "$BIN_DIR"):\"\$PATH\""
+    if [ "$UPDATE_PATH" -eq 1 ] && [ "$USER_ID" -ne 0 ] && [ -n "${HOME:-}" ]; then
+      case "${SHELL:-}" in
+        */zsh) PROFILE=${ZDOTDIR:-$HOME}/.zprofile ;;
+        */bash)
+          if [ -f "$HOME/.bash_profile" ]; then PROFILE=$HOME/.bash_profile
+          elif [ -f "$HOME/.bash_login" ]; then PROFILE=$HOME/.bash_login
+          else PROFILE=$HOME/.profile
+          fi ;;
+        */fish) PROFILE= ;;
+        *) PROFILE=$HOME/.profile ;;
+      esac
+      if [ -n "$PROFILE" ]; then
+        if ! grep -Fqx "$PATH_LINE" "$PROFILE" 2>/dev/null; then
+          if mkdir -p "$(dirname -- "$PROFILE")" && printf '\n# Added by tedit installer\n%s\n' "$PATH_LINE" >>"$PROFILE"; then
+            say "Added $BIN_DIR to PATH in $PROFILE"
+          else say "Warning: could not update $PROFILE; add $BIN_DIR to PATH manually."
+          fi
+        fi
+      fi
+    fi
+    case "${SHELL:-}" in
+      */fish) say "Add to PATH with: fish_add_path $(shell_quote "$BIN_DIR")" ;;
+      *) say "Add to PATH for this shell: $PATH_LINE" ;;
+    esac
+    ;;
+esac
+say "tedit installed successfully: $TARGET_PREFIX/bin/tedit"
+}
+
+main "$@"

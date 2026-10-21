@@ -41,7 +41,8 @@ printf 'set status off\nrepl "two" "two words"\nsaveas "%s"\nalias vv "version"\
   "$WORK/saved with spaces.txt" | run_tedit "$WORK/path with spaces.txt" >"$TEST_ROOT/quoted.out"
 [ "$(sed -n '2p' "$WORK/saved with spaces.txt")" = "two words" ] || fail "quoted replacement/path"
 printf 'vv\nq!\n' | run_tedit >"$TEST_ROOT/alias.out"
-grep -q 'tedit 2.2.0' "$TEST_ROOT/alias.out" || fail "alias persistence"
+version=$("$BIN" --version)
+grep -Fq "$version" "$TEST_ROOT/alias.out" || fail "alias persistence"
 [ "$(stat -c %a "$TEST_HOME/.teditrc" 2>/dev/null || stat -f %Lp "$TEST_HOME/.teditrc")" = 600 ] || fail "private config mode"
 
 # Filenames must not inject additional configuration records.

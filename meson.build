@@ -1,7 +1,7 @@
 project(
   'tedit',
   'cpp',
-  version: '2.2.0',
+  version: '2.3.1',
   default_options: [
     'cpp_std=c++17',
     'warning_level=3',
