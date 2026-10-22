@@ -2,7 +2,7 @@
 
 `tedit` is a lightweight command-line text editor for Linux, BSD, and macOS. Its command model follows `ed` and `ex`, with atomic saves, recovery, syntax highlighting, multiple buffers, Lua plugins, and optional language-server formatting.
 
-> If you are on windows, go [here](https://github.com/RobertFlexx/tedit/tree/tedit-windows)
+> If you are on windows, go [here](https://github.com/RobertFlexx/tedit/tree/tedit-windows) (outdated)
 
 ---
 
